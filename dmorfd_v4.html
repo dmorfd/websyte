@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dmorfd</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@400;700&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --blk:#080608;--dk:#100e10;--dk2:#160f14;--dk3:#1e1218;
+  --brd:#2a1f26;--brd2:#3d2535;
+  --gray:#666;--gray2:#999;--lgray:#bbb;
+  --wht:#e0d8d0;--owht:#b8b0a8;
+  --red:#8b0000;--red2:#6b0000;--red3:#a01020;--redglow:#8b000055;
+  --redbright:#c41e3a;
+}
+html{scroll-behavior:smooth;}
+body{background:var(--blk);color:var(--wht);font-family:'IM Fell English',Georgia,serif;overflow-x:hidden;}
+
+/* ══ INTRO ══ */
+#intro{position:relative;width:100%;min-height:100vh;background:#050305;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;padding:2rem 1rem;}
+#intro-canvas{position:absolute;inset:0;width:100%;height:100%;}
+#intro-content{position:relative;z-index:10;text-align:center;display:flex;flex-direction:column;align-items:center;gap:1.2rem;}
+.intro-title{font-family:'Cinzel Decorative',serif;font-size:2.2rem;font-weight:700;color:var(--wht);letter-spacing:0.3em;text-shadow:0 0 40px var(--redglow);}
+.intro-sub{font-family:'Cinzel',serif;font-size:0.65rem;color:var(--red3);letter-spacing:0.4em;}
+.greek-quote-sm{font-family:'IM Fell English',serif;font-style:italic;font-size:0.72rem;color:var(--gray);max-width:340px;text-align:center;}
+.load-frame{width:340px;border:1px solid var(--brd2);padding:5px;background:var(--dk);position:relative;}
+.load-frame::before,.load-frame::after{content:'✦';position:absolute;color:var(--red);font-size:8px;}
+.load-frame::before{top:4px;left:6px;}.load-frame::after{bottom:4px;right:6px;}
+.load-inner{border:1px solid #2a1520;padding:4px;}
+.load-wrap{height:20px;background:#0a0508;border:1px solid var(--brd);position:relative;overflow:hidden;}
+.load-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--red2),var(--red),var(--redbright));position:relative;}
+.load-fill::after{content:'';position:absolute;right:0;top:0;bottom:0;width:4px;background:#fff;opacity:0.3;animation:fillglow 0.3s ease-in-out infinite alternate;}
+@keyframes fillglow{from{opacity:0.2;}to{opacity:0.5;}}
+.load-teeth{position:absolute;inset:0;background-image:repeating-linear-gradient(90deg,transparent,transparent 10px,rgba(0,0,0,0.2) 10px,rgba(0,0,0,0.2) 11px);pointer-events:none;}
+.load-txt{font-family:'Cinzel',serif;font-size:0.58rem;letter-spacing:0.2em;color:var(--gray2);text-align:center;margin-top:6px;}
+.lpct{color:var(--red3);}
+
+/* ══ MAIN ══ */
+#main-page{display:none;width:100%;position:relative;min-height:100vh;}
+#moon-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:hidden;}
+#moon-canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
+.page{position:relative;z-index:1;max-width:680px;margin:0 auto;padding:2rem 1.5rem 4rem;display:flex;flex-direction:column;align-items:center;gap:1.2rem;}
+.particles{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0;}
+.particle{position:absolute;width:2px;height:2px;background:var(--red3);border-radius:50%;animation:pfloat linear infinite;opacity:0;}
+@keyframes pfloat{0%{transform:translateY(100vh) scale(0);opacity:0;}10%{opacity:0.4;}90%{opacity:0.15;}100%{transform:translateY(-20px);opacity:0;}}
+
+/* cards */
+.card{width:100%;background:rgba(16,14,16,0.92);border:1px solid var(--brd);position:relative;padding:1.25rem;backdrop-filter:blur(2px);}
+.card::before,.card::after{content:'✦';position:absolute;color:var(--red2);font-size:9px;}
+.card::before{top:5px;left:7px;}.card::after{bottom:5px;right:7px;}
+.card-inner{border:1px solid var(--dk3);padding:1rem;position:relative;}
+.card-inner::before,.card-inner::after{content:'✦';position:absolute;color:#2a1520;font-size:7px;}
+.card-inner::before{top:3px;right:5px;}.card-inner::after{bottom:3px;left:5px;}
+.sec{font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.25em;color:var(--red3);text-transform:uppercase;display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;}
+.sec::after{content:'';flex:1;height:1px;background:linear-gradient(to right,var(--brd2),transparent);}
+
+/* profile */
+.profile-wrap{display:flex;flex-direction:column;align-items:center;gap:0.85rem;padding:0.5rem 0;}
+.avatar-ring{width:90px;height:90px;border-radius:50%;border:2px solid var(--red);overflow:hidden;cursor:pointer;animation:rpulse 3s ease-in-out infinite;flex-shrink:0;}
+.avatar-ring img{width:100%;height:100%;object-fit:cover;display:block;}
+@keyframes rpulse{0%,100%{box-shadow:0 0 0 0 var(--redglow);}50%{box-shadow:0 0 0 10px transparent;}}
+.dname{font-family:'Cinzel Decorative',serif;font-size:1.4rem;font-weight:700;color:var(--wht);letter-spacing:0.1em;}
+.rune-div{color:var(--red2);font-size:0.7rem;letter-spacing:0.3em;opacity:0.6;}
+.view-ctr{display:flex;align-items:center;gap:0.5rem;font-family:'Cinzel',serif;font-size:0.65rem;color:var(--gray2);letter-spacing:0.08em;}
+.vnum{color:var(--lgray);font-weight:600;}
+
+/* discord */
+.disc-bar{display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0.75rem;background:var(--dk2);border:1px solid var(--brd);width:100%;}
+.sdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.sdot.online{background:#57F287;box-shadow:0 0 5px #57F287;}
+.sdot.idle{background:#FEE75C;box-shadow:0 0 5px #FEE75C;}
+.sdot.dnd{background:var(--redbright);box-shadow:0 0 5px var(--redbright);}
+.sdot.offline{background:var(--gray);}
+.disc-info{flex:1;min-width:0;}
+.dlabel{font-family:'Cinzel',serif;font-size:0.58rem;color:var(--gray);letter-spacing:0.1em;}
+.dtext{font-size:0.78rem;color:var(--lgray);}
+.dgame{font-size:0.7rem;color:var(--red3);font-style:italic;margin-top:2px;}
+.dcustom{font-size:0.68rem;color:var(--gray2);margin-top:2px;font-style:italic;}
+.vizbar{display:flex;align-items:flex-end;gap:2px;height:16px;flex-shrink:0;}
+.vb{width:3px;background:var(--red);border-radius:1px 1px 0 0;opacity:0.7;animation:vbounce 0.5s ease-in-out infinite alternate;}
+.vb:nth-child(1){animation-delay:0s;}.vb:nth-child(2){animation-delay:0.1s;}.vb:nth-child(3){animation-delay:0.05s;}.vb:nth-child(4){animation-delay:0.15s;}.vb:nth-child(5){animation-delay:0.08s;}
+@keyframes vbounce{from{height:3px;}to{height:14px;}}
+.vizbar.paused .vb{animation-play-state:paused;}
+.lanyard-note{font-family:'Cinzel',serif;font-size:0.56rem;color:var(--gray);text-align:center;padding-top:0.4rem;letter-spacing:0.05em;}
+.lanyard-note a{color:var(--red3);text-decoration:none;}
+
+/* music */
+.music-row{display:flex;align-items:center;gap:0.75rem;}
+.music-art{width:44px;height:44px;background:var(--dk3);border:1px solid var(--brd);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;}
+.music-info{flex:1;min-width:0;}
+.music-title{font-size:0.85rem;color:var(--wht);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.music-sub{font-family:'Cinzel',serif;font-size:0.6rem;color:var(--gray2);}
+.ctrl-btn{background:none;border:1px solid var(--brd);color:var(--lgray);width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:10px;transition:all 0.2s;}
+.ctrl-btn:hover{border-color:var(--red3);color:var(--red3);}
+.play-btn{width:34px;height:34px;border-color:var(--red2);}
+.play-btn.playing{border-color:var(--redbright);color:var(--redbright);}
+.prog-wrap{height:3px;background:var(--dk3);cursor:pointer;margin-top:0.4rem;}
+.prog-fill{height:100%;background:var(--red);width:0%;}
+.vol-row{display:flex;align-items:center;gap:0.6rem;margin-top:0.6rem;}
+.vol-label{font-family:'Cinzel',serif;font-size:0.58rem;color:var(--gray2);letter-spacing:0.12em;width:50px;}
+.vol-pct{font-family:'Cinzel',serif;font-size:0.6rem;color:var(--red3);min-width:30px;}
+.music-url-inp{background:var(--dk2);border:1px solid var(--brd);color:var(--lgray);padding:0.35rem 0.6rem;font-size:0.68rem;width:100%;font-family:'Cinzel',serif;outline:none;margin-top:0.5rem;}
+.music-url-inp:focus{border-color:var(--red2);}
+
+/* dropdown */
+.drop-header{display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;}
+.drop-arrow{color:var(--red);font-size:0.65rem;transition:transform 0.3s;}
+.drop-arrow.open{transform:rotate(180deg);}
+.drop-body{display:none;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--brd);}
+.drop-body.open{display:block;}
+
+/* interests */
+.int-grid{display:flex;flex-wrap:wrap;gap:0.45rem;}
+.itag{padding:0.28rem 0.65rem;background:var(--dk2);border:1px solid var(--brd);font-family:'Cinzel',serif;font-size:0.61rem;letter-spacing:0.08em;color:var(--lgray);cursor:pointer;transition:all 0.2s;}
+.itag:hover,.itag.active{border-color:var(--red3);color:var(--wht);}
+.itag-desc{display:none;width:100%;margin-top:0.6rem;padding:0.6rem 0.75rem;background:var(--dk2);border:1px solid var(--brd2);border-left:2px solid var(--red2);font-size:0.8rem;color:var(--owht);line-height:1.65;font-style:italic;}
+.itag-desc.open{display:block;}
+
+/* games */
+.game-item{display:flex;align-items:center;gap:0.7rem;padding:0.45rem 0.6rem;background:var(--dk2);border:1px solid var(--brd);margin-bottom:0.4rem;font-size:0.82rem;color:var(--lgray);}
+.game-ico{font-size:14px;width:20px;text-align:center;flex-shrink:0;}
+.game-name{flex:1;}
+.game-tag{font-family:'Cinzel',serif;font-size:0.52rem;color:var(--red2);letter-spacing:0.1em;border:1px solid var(--red2);padding:2px 5px;}
+
+/* clock schedule */
+.clock-wrap{display:flex;flex-direction:column;align-items:center;gap:0.75rem;}
+.clock-svg-wrap{position:relative;width:180px;height:180px;}
+.clock-label{font-family:'Cinzel',serif;font-size:0.62rem;color:var(--gray2);letter-spacing:0.1em;text-align:center;}
+.clock-active-note{font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.08em;text-align:center;}
+.clock-active-note.active-now{color:var(--red3);}
+.clock-active-note.inactive{color:var(--gray);}
+
+/* info */
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;}
+.info-cell{background:var(--dk2);border:1px solid var(--brd);padding:0.55rem 0.75rem;}
+.info-label{font-family:'Cinzel',serif;font-size:0.55rem;color:var(--red3);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:3px;}
+.info-val{font-size:0.82rem;color:var(--lgray);}
+
+/* links */
+.links-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.5rem;}
+.link-btn{display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.7rem;background:var(--dk2);border:1px solid var(--brd);color:var(--lgray);text-decoration:none;font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.1em;cursor:pointer;transition:all 0.2s;}
+.link-btn:hover{border-color:var(--red3);color:var(--wht);}
+.link-ico{font-size:14px;flex-shrink:0;}
+
+/* starview */
+.starview-btn{width:100%;padding:0.65rem;background:var(--dk2);border:1px solid var(--brd2);font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.2em;color:var(--lgray);cursor:pointer;text-align:center;transition:all 0.3s;text-transform:uppercase;}
+.starview-btn:hover{border-color:var(--red3);color:var(--wht);background:var(--dk3);}
+#starview-modal{display:none;position:fixed;inset:0;background:#000;z-index:9000;flex-direction:column;}
+#starview-modal.open{display:flex;}
+#star-canvas{width:100%;flex:1;}
+.star-close{position:absolute;top:16px;right:20px;font-family:'Cinzel',serif;font-size:0.65rem;color:var(--lgray);cursor:pointer;letter-spacing:0.2em;z-index:9001;background:rgba(0,0,0,0.5);padding:6px 12px;border:1px solid var(--brd);}
+.star-close:hover{color:var(--red3);border-color:var(--red3);}
+
+/* logbook */
+.logbook-entries{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;}
+.logbook-entries::-webkit-scrollbar{width:4px;}.logbook-entries::-webkit-scrollbar-track{background:var(--dk2);}.logbook-entries::-webkit-scrollbar-thumb{background:var(--red2);}
+.log-entry{background:var(--dk2);border:1px solid var(--brd);padding:0.5rem 0.75rem;}
+.log-entry-name{font-family:'Cinzel',serif;font-size:0.58rem;color:var(--red3);letter-spacing:0.1em;margin-bottom:3px;}
+.log-entry-msg{font-size:0.78rem;color:var(--owht);line-height:1.5;}
+.log-entry-date{font-family:'Cinzel',serif;font-size:0.52rem;color:var(--gray);margin-top:3px;}
+.log-form{display:flex;flex-direction:column;gap:0.5rem;}
+.log-input{background:var(--dk2);border:1px solid var(--brd);color:var(--lgray);padding:0.4rem 0.6rem;font-family:'Cinzel',serif;font-size:0.65rem;outline:none;width:100%;}
+.log-input:focus{border-color:var(--red2);}
+.log-submit{background:none;border:1px solid var(--red2);color:var(--red3);font-family:'Cinzel',serif;font-size:0.62rem;letter-spacing:0.15em;padding:0.4rem 1rem;cursor:pointer;transition:all 0.2s;text-transform:uppercase;}
+.log-submit:hover{background:var(--red2);color:var(--wht);}
+.log-note{font-family:'Cinzel',serif;font-size:0.56rem;color:var(--gray);letter-spacing:0.06em;}
+.log-wordcount{font-family:'Cinzel',serif;font-size:0.56rem;color:var(--gray2);}
+.log-error{font-family:'Cinzel',serif;font-size:0.6rem;color:var(--redbright);display:none;}
+
+/* moon password modal */
+#moon-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:8000;align-items:center;justify-content:center;}
+#moon-modal.open{display:flex;}
+.moon-modal-box{background:var(--dk);border:1px solid var(--brd2);padding:2rem;width:300px;position:relative;text-align:center;}
+.moon-modal-box::before,.moon-modal-box::after{content:'✦';position:absolute;color:var(--red2);font-size:9px;}
+.moon-modal-box::before{top:6px;left:8px;}.moon-modal-box::after{bottom:6px;right:8px;}
+.moon-modal-title{font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.25em;color:var(--red3);margin-bottom:1.25rem;text-transform:uppercase;}
+.moon-modal-subtitle{font-family:'IM Fell English',serif;font-size:0.75rem;color:var(--gray2);font-style:italic;margin-bottom:1.25rem;}
+.moon-dial-row{display:flex;justify-content:center;gap:0.75rem;margin-bottom:1.25rem;}
+.moon-dial{display:flex;flex-direction:column;align-items:center;gap:0.3rem;}
+.moon-dial-label{font-family:'Cinzel',serif;font-size:0.52rem;color:var(--gray);letter-spacing:0.1em;}
+.moon-dial-num{font-family:'Cinzel Decorative',serif;font-size:1.6rem;color:var(--wht);min-width:36px;text-align:center;line-height:1;}
+.moon-dial-btns{display:flex;flex-direction:column;gap:2px;}
+.moon-dial-btn{background:none;border:1px solid var(--brd);color:var(--lgray);width:26px;height:20px;cursor:pointer;font-size:9px;font-family:monospace;transition:all 0.2s;display:flex;align-items:center;justify-content:center;}
+.moon-dial-btn:hover{border-color:var(--red3);color:var(--red3);}
+.moon-submit{background:none;border:1px solid var(--red2);color:var(--red3);font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.2em;padding:0.4rem 1.25rem;cursor:pointer;transition:all 0.2s;text-transform:uppercase;width:100%;margin-top:0.25rem;}
+.moon-submit:hover{background:var(--red2);color:var(--wht);}
+.moon-close{position:absolute;top:8px;right:10px;background:none;border:none;color:var(--gray2);cursor:pointer;font-size:0.9rem;}
+.moon-close:hover{color:var(--red3);}
+.moon-result{font-family:'Cinzel',serif;font-size:0.62rem;letter-spacing:0.1em;margin-top:0.75rem;height:20px;}
+.moon-result.correct{color:#57F287;}
+.moon-result.wrong{color:var(--redbright);}
+
+.footer-rune{font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.3em;color:var(--gray);text-align:center;padding-top:0.5rem;}
+.top-orn{font-size:1rem;color:var(--red2);letter-spacing:0.5em;opacity:0.5;padding-top:0.5rem;}
+</style>
+</head>
+<body>
+
+<!-- ══ INTRO ══ -->
+<div id="intro">
+  <canvas id="intro-canvas"></canvas>
+  <div id="intro-content">
+    <div class="intro-sub">ⴵ — THE REALM OF — ⴵ</div>
+    <div class="intro-title">dmorfd</div>
+    <div class="greek-quote-sm">"Tell me, O Muse, of that ingenious hero who travelled far and wide..."</div>
+    <div style="width:340px;margin-top:0.5rem;">
+      <div class="load-frame">
+        <div class="load-inner">
+          <div class="load-wrap">
+            <div class="load-fill" id="lbar"><div class="load-teeth"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="load-txt">FORGING THE REALM... <span class="lpct" id="lpct">0%</span></div>
+    </div>
+    <div style="font-family:'Cinzel',serif;font-size:0.65rem;color:var(--red2);letter-spacing:0.3em;opacity:0.5;">⚔ ᚦ ᚢ ᚾ ᚱ ⚔</div>
+  </div>
+</div>
+
+<!-- ══ MAIN PAGE ══ -->
+<div id="main-page">
+  <div id="moon-layer"><canvas id="moon-canvas"></canvas></div>
+  <div class="particles" id="particles"></div>
+  <div class="page">
+
+    <div class="top-orn">⚔ ✦ ⚔</div>
+
+    <!-- PROFILE -->
+    <div class="card">
+      <div class="card-inner profile-wrap">
+        <div class="avatar-ring" onclick="setAvatar()">
+          <img id="avatarImg" src="https://cdn.discordapp.com/avatars/924767215629246474/7708daee44746a483ee133bca10460ad.webp?size=256" alt="dmorfd">
+        </div>
+        <div class="dname">dmorfd</div>
+        <div class="rune-div">— ᚦ ᚢ ᚾ ᚱ —</div>
+        <div class="greek-quote-sm" style="font-size:0.68rem;color:var(--gray);">"No man nor god can escape his fate" — Homer</div>
+        <div class="view-ctr">
+          <span style="font-size:12px;">👁</span>
+          <span class="vnum" id="viewCount">—</span>
+          <span>souls hath entered this realm</span>
+        </div>
+        <div class="disc-bar">
+          <span style="font-size:14px;">⚔</span>
+          <div class="sdot offline" id="sdot"></div>
+          <div class="disc-info">
+            <div class="dlabel">DISCORD — LIVE</div>
+            <div class="dtext" id="dtext">Connecting to the ether...</div>
+            <div class="dgame" id="dgame" style="display:none;"></div>
+            <div class="dcustom" id="dcustom" style="display:none;"></div>
+          </div>
+          <div class="vizbar paused" id="vizbar">
+            <div class="vb"></div><div class="vb"></div><div class="vb"></div><div class="vb"></div><div class="vb"></div>
+          </div>
+        </div>
+        <div class="lanyard-note">Live status via Lanyard · Join <a href="https://discord.gg/lanyard" target="_blank">discord.gg/lanyard</a> to enable</div>
+      </div>
+    </div>
+
+    <!-- MUSIC -->
+    <div class="card">
+      <div class="card-inner">
+        <div class="sec">♪ Background Music</div>
+        <div class="music-row">
+          <div class="music-art">🎵</div>
+          <div class="music-info">
+            <div class="music-title" id="musicTitle">Medieval Ambience Vol. I</div>
+            <div class="music-sub">Paste a track URL below</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <button class="ctrl-btn" onclick="prevTrack()">◀◀</button>
+            <button class="ctrl-btn play-btn" id="playBtn" onclick="togglePlay()">▶</button>
+            <button class="ctrl-btn" onclick="nextTrack()">▶▶</button>
+          </div>
+        </div>
+        <div class="prog-wrap" onclick="seekMusic(event)"><div class="prog-fill" id="progFill"></div></div>
+        <div class="vol-row">
+          <div class="vol-label">VOLUME</div>
+          <canvas id="dialCanvas" width="38" height="38" style="cursor:pointer;"></canvas>
+          <input type="range" id="volSlider" min="0" max="100" value="80" step="1" style="flex:1;" oninput="setVol(this.value)">
+          <span class="vol-pct" id="volPct">80%</span>
+        </div>
+        <audio id="audioEl" loop></audio>
+        <input class="music-url-inp" type="text" placeholder="Paste .mp3 URL here..." onchange="setMusicUrl(this.value)">
+      </div>
+    </div>
+
+    <!-- INTERESTS -->
+    <div class="card">
+      <div class="card-inner">
+        <div class="drop-header" onclick="toggleDrop('int')">
+          <div class="sec" style="flex:1;margin:0;">⚜ Personal Interests</div>
+          <i class="drop-arrow" id="int-arrow">▼</i>
+        </div>
+        <div class="drop-body" id="int-body">
+          <div class="int-grid" id="int-grid"></div>
+          <div class="itag-desc" id="int-desc"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GAMES -->
+    <div class="card">
+      <div class="card-inner">
+        <div class="drop-header" onclick="toggleDrop('gm')">
+          <div class="sec" style="flex:1;margin:0;">🎮 Favorite Games</div>
+          <i class="drop-arrow" id="gm-arrow">▼</i>
+        </div>
+        <div class="drop-body" id="gm-body">
+          <div id="games-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLOCK SCHEDULE -->
+    <div class="card">
+      <div class="card-inner">
+        <div class="sec">🌙 VRChat Activity Clock (Central Time)</div>
+        <div class="clock-wrap">
+          <div class="clock-svg-wrap">
+            <canvas id="clockCanvas" width="180" height="180"></canvas>
+          </div>
+          <div class="clock-label">Active window: <strong style="color:var(--red3);">Midnight — 3:00 AM CT</strong></div>
+          <div class="clock-active-note" id="clock-status"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INFO -->
+    <div class="card">
+      <div class="card-inner">
+        <div class="sec">📜 About the Warrior</div>
+        <div class="info-grid">
+          <div class="info-cell"><div class="info-label">Birthday</div><div class="info-val">August 29, 2009</div></div>
+          <div class="info-cell"><div class="info-label">Age</div><div class="info-val" id="age-val">—</div></div>
+          <div class="info-cell"><div class="info-label">Location</div><div class="info-val">Tennessee, US</div></div>
+          <div class="info-cell"><div class="info-label">Zodiac</div><div class="info-val">Virgo ♍</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STARVIEW -->
+    <div class="card">
+      <div class="card-inner">
+        <div class="sec">✦ Starview</div>
+        <button class="starview-btn" onclick="openStarview()">✦ Enter the Night Sky ✦</button>
+      </div>
+    </div>
+
+    <!-- LINKS -->
+    <div class="card">
+      <div class="card-inner">
+        <div class="sec">🔗 Royal Connections</div>
+        <div class="links-grid">
+          <a class="link-btn" href="#" onclick="editLink(event,this,'Discord')"><span class="link-ico">💬</span> Discord</a>
+          <a class="link-btn" href="https://vrchat.com" target="_blank"><span class="link-ico">🥽</span> VRChat</a>
+          <a class="link-btn" href="#" onclick="editLink(event,this,'Twitch')"><span class="link-ico">📺</span> Twitch</a>
+          <a class="link-btn" href="#" onclick="editLink(event,this,'YouTube')"><span class="link-ico">▶</span> YouTube</a>
+          <a class="link-btn" href="#" onclick="editLink(event,this,'Steam')"><span class="link-ico">🎮</span> Steam</a>
+          <a class="link-btn" href="#" onclick="editLink(event,this,'Spotify')"><span class="link-ico">🎵</span> Spotify</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOGBOOK -->
+    <div class="card">
+      <div class="card-inner">
+        <div class="sec">📖 The Logbook</div>
+        <div class="logbook-entries" id="logbook-entries">
+          <div style="font-family:'Cinzel',serif;font-size:0.6rem;color:var(--gray);text-align:center;padding:1rem;">No entries yet. Be the first to leave a mark.</div>
+        </div>
+        <div class="log-form">
+          <input class="log-input" id="log-name" type="text" placeholder="Your Discord name..." maxlength="40">
+          <div style="position:relative;">
+            <textarea class="log-input" id="log-msg" rows="2" placeholder="Leave a note... (max 20 words)" maxlength="200" oninput="updateWordCount()" style="resize:none;font-family:'IM Fell English',serif;"></textarea>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+            <div>
+              <div class="log-wordcount" id="log-wc">0 / 20 words</div>
+              <div class="log-error" id="log-err">⚠ That word is not permitted in this realm.</div>
+            </div>
+            <button class="log-submit" onclick="submitLog()">✦ Inscribe ✦</button>
+          </div>
+          <div class="log-note">All entries are visible to all visitors. Keep it respectful.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-rune">✦ dmorfd · MMXXVI · Omnia Fata Regunt ✦</div>
+  </div>
+</div>
+
+<!-- STARVIEW MODAL -->
+<div id="starview-modal">
+  <div class="star-close" onclick="closeStarview()">✕ CLOSE</div>
+  <canvas id="star-canvas"></canvas>
+</div>
+
+<!-- MOON PASSWORD MODAL -->
+<div id="moon-modal">
+  <div class="moon-modal-box">
+    <button class="moon-close" onclick="closeMoonModal()">✕</button>
+    <div class="moon-modal-title">⊕ The Lunar Gate ⊕</div>
+    <div class="moon-modal-subtitle">"Set the numbers to pass through..."</div>
+    <div class="moon-dial-row" id="moon-dials"></div>
+    <button class="moon-submit" onclick="checkMoonCode()">Enter the Gate</button>
+    <div class="moon-result" id="moon-result"></div>
+  </div>
+</div>
+
+<script>
+const DISCORD_ID = '924767215629246474';
+
+/* ══════════════════════════════════
+   INTERESTS & GAMES DATA
+══════════════════════════════════ */
+const INTERESTS = [
+  {name:'Gaming',icon:'🎮',desc:'I enjoy single player story based games either by myself or with friends. I also enjoy online social games to talk to people, chill out, and escape.'},
+  {name:'Greek Mythology',icon:'🏛',desc:'I love stories like the Odyssey and learning about different greek gods or constellations. My favorite greek god is Ares.'},
+  {name:'Space',icon:'🌌',desc:'I have always loved night and the moon more than the sun or daytime. I feel more of a connection to space and the moon. One stupid dream of mine is to be on the moon, either when I die or a short visit. With megalophobia, space is as equally terrifying as it is fascinating.'},
+  {name:'Music',icon:'🎵',desc:'I love indie rock music like Arctic Monkeys. Music can change and affect my mood very easily and is a great short escape.'},
+  {name:'Sleeping',icon:'💤',desc:'I hate going to sleep but I love sleeping.'},
+  {name:'Anime',icon:'🎌',desc:'I\'m a casual anime watcher and I will stand by this one statement: nothing will ever top the amazing story, sound design, and animation of Attack on Titan for me. It was one of my first anime and has been my favorite since season 1.'},
+  {name:'TV',icon:'📺',desc:'Breaking Bad, Invincible, Peaky Blinders, Severance, Arcane, and many other amazing shows I have seen.'},
+];
+const GAMES = [
+  {name:'VRChat',icon:'🥽',tag:'SOCIAL VR'},
+  {name:'Minecraft',icon:'⛏',tag:'SANDBOX'},
+  {name:'Omori',icon:'🌸',tag:'RPG'},
+  {name:'Cyberpunk 2077',icon:'🌆',tag:'OPEN WORLD'},
+  {name:'Schedule 1',icon:'📋',tag:'SIM'},
+];
+
+/* ══════════════════════════════════
+   SLUR FILTER (partial list - block list)
+══════════════════════════════════ */
+const BLOCKED = ['nigger','nigga','faggot','retard','chink','spic','kike','tranny','cunt','slut','whore','nazi','fuck','shit','ass','bitch','piss','dick','cock','pussy'];
+function containsSlur(text){
+  const lower=text.toLowerCase().replace(/[^a-z0-9 ]/g,'');
+  return BLOCKED.some(w=>lower.split(' ').includes(w)||lower.includes(w));
+}
+
+/* ══════════════════════════════════
+   LOGBOOK (in-memory, persistent via storage API)
+══════════════════════════════════ */
+let logEntries = [];
+
+async function loadLog(){
+  try{
+    const r = await window.storage.get('logbook-entries');
+    if(r && r.value) logEntries = JSON.parse(r.value);
+  } catch(e){ logEntries = []; }
+  renderLog();
+}
+async function saveLog(){
+  try{ await window.storage.set('logbook-entries', JSON.stringify(logEntries), true); } catch(e){}
+}
+function renderLog(){
+  const el = document.getElementById('logbook-entries');
+  if(logEntries.length === 0){
+    el.innerHTML = '<div style="font-family:\'Cinzel\',serif;font-size:0.6rem;color:var(--gray);text-align:center;padding:1rem;">No entries yet. Be the first to leave a mark.</div>';
+    return;
+  }
+  el.innerHTML = [...logEntries].reverse().map(e=>`
+    <div class="log-entry">
+      <div class="log-entry-name">${escHtml(e.name)}</div>
+      <div class="log-entry-msg">${escHtml(e.msg)}</div>
+      <div class="log-entry-date">${e.date}</div>
+    </div>
+  `).join('');
+}
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function updateWordCount(){
+  const txt = document.getElementById('log-msg').value.trim();
+  const words = txt ? txt.split(/\s+/) : [];
+  document.getElementById('log-wc').textContent = `${words.length} / 20 words`;
+  document.getElementById('log-wc').style.color = words.length > 20 ? 'var(--redbright)' : 'var(--gray2)';
+}
+function submitLog(){
+  const name = document.getElementById('log-name').value.trim();
+  const msg = document.getElementById('log-msg').value.trim();
+  const errEl = document.getElementById('log-err');
+  errEl.style.display = 'none';
+  if(!name || !msg) return;
+  const words = msg.split(/\s+/);
+  if(words.length > 20){ errEl.textContent = '⚠ Maximum 20 words allowed.'; errEl.style.display = 'block'; return; }
+  if(containsSlur(name) || containsSlur(msg)){ errEl.textContent = '⚠ That word is not permitted in this realm.'; errEl.style.display = 'block'; return; }
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  logEntries.push({name, msg, date: dateStr});
+  if(logEntries.length > 100) logEntries.shift();
+  saveLog(); renderLog();
+  document.getElementById('log-name').value = '';
+  document.getElementById('log-msg').value = '';
+  document.getElementById('log-wc').textContent = '0 / 20 words';
+}
+
+/* ══════════════════════════════════
+   VIEW COUNTER
+══════════════════════════════════ */
+async function initViewCounter(){
+  let count = 2847;
+  try{
+    const r = await window.storage.get('visit-count', true);
+    count = r ? (parseInt(r.value)||2847)+1 : 2848;
+    await window.storage.set('visit-count', String(count), true);
+  } catch(e){ count = 2847 + Math.floor(Math.random()*80); }
+  const el = document.getElementById('viewCount');
+  let cur = 0; const step = Math.ceil(count/50);
+  const t = setInterval(()=>{ cur = Math.min(cur+step, count); el.textContent = cur.toLocaleString(); if(cur>=count) clearInterval(t); }, 25);
+}
+
+/* ══════════════════════════════════
+   AGE
+══════════════════════════════════ */
+(function(){
+  const bday = new Date('2009-08-29'), now = new Date();
+  let age = now.getFullYear() - bday.getFullYear();
+  if(now < new Date(now.getFullYear(), bday.getMonth(), bday.getDate())) age--;
+  document.getElementById('age-val').textContent = age + ' years old';
+})();
+
+/* ══════════════════════════════════
+   DISCORD LANYARD
+══════════════════════════════════ */
+function cleanCustomStatus(text){
+  if(!text) return '';
+  // Remove emoji shortcodes like :smile: and Unicode emojis
+  return text.replace(/:[a-zA-Z0-9_]+:/g,'').replace(/[\u{1F300}-\u{1FFFF}]/gu,'').replace(/[\u2600-\u27FF]/g,'').trim();
+}
+function updateDiscord(data){
+  const dot=document.getElementById('sdot');
+  const dtext=document.getElementById('dtext');
+  const dgame=document.getElementById('dgame');
+  const dcustom=document.getElementById('dcustom');
+  const vizbar=document.getElementById('vizbar');
+  const st=data.discord_status||'offline';
+  const statusMap={online:'Online',idle:'Idle',dnd:'Do Not Disturb',offline:'Offline'};
+  dot.className='sdot '+(st==='online'?'online':st==='idle'?'idle':st==='dnd'?'dnd':'offline');
+  dtext.textContent=(statusMap[st]||'Offline')+' — dmorfd';
+  const activities=(data.activities||[]).filter(a=>a.type===0);
+  if(activities.length>0){dgame.style.display='block';dgame.textContent='Playing: '+activities[0].name;}
+  else{dgame.style.display='none';}
+  const customAct=(data.activities||[]).find(a=>a.type===4);
+  if(customAct&&customAct.state){
+    const cleaned=cleanCustomStatus(customAct.state);
+    if(cleaned){dcustom.style.display='block';dcustom.textContent=cleaned;}
+    else{dcustom.style.display='none';}
+  } else{dcustom.style.display='none';}
+  if(st!=='offline') vizbar.classList.remove('paused');
+  else vizbar.classList.add('paused');
+}
+function fetchLanyard(){
+  fetch('https://api.lanyard.rest/v1/users/'+DISCORD_ID)
+    .then(r=>r.json()).then(j=>{if(j.success)updateDiscord(j.data);}).catch(()=>{});
+}
+fetchLanyard(); setInterval(fetchLanyard,30000);
+(function(){
+  let ws;
+  function connect(){
+    ws=new WebSocket('wss://api.lanyard.rest/socket');
+    ws.onopen=()=>ws.send(JSON.stringify({op:2,d:{subscribe_to_id:DISCORD_ID}}));
+    ws.onmessage=e=>{
+      const msg=JSON.parse(e.data);
+      if(msg.op===0&&(msg.t==='INIT_STATE'||msg.t==='PRESENCE_UPDATE')){
+        const d=msg.d[DISCORD_ID]||msg.d;
+        if(d&&d.discord_status) updateDiscord(d);
+      }
+      if(msg.op===1) setInterval(()=>ws.send(JSON.stringify({op:3})),msg.d.heartbeat_interval);
+    };
+    ws.onclose=()=>setTimeout(connect,5000);
+  }
+  try{connect();}catch(e){}
+})();
+
+/* ══════════════════════════════════
+   MUSIC
+══════════════════════════════════ */
+const audio=document.getElementById('audioEl');
+const playBtn=document.getElementById('playBtn');
+const progFill=document.getElementById('progFill');
+let playing=false;
+audio.volume=0.8;
+function togglePlay(){
+  if(!audio.src||audio.src===location.href){alert('Paste a music URL first!');return;}
+  if(playing){audio.pause();playBtn.textContent='▶';playBtn.classList.remove('playing');}
+  else{audio.play().catch(()=>{});playBtn.textContent='⏸';playBtn.classList.add('playing');}
+  playing=!playing;
+}
+function setMusicUrl(url){if(!url)return;audio.src=url;document.getElementById('musicTitle').textContent=url.split('/').pop().replace(/\.[^.]+$/,'')||'Custom Track';}
+audio.addEventListener('timeupdate',()=>{if(audio.duration) progFill.style.width=(audio.currentTime/audio.duration*100)+'%';});
+function seekMusic(e){if(!audio.duration)return;const r=e.currentTarget.getBoundingClientRect();audio.currentTime=(e.clientX-r.left)/r.width*audio.duration;}
+function prevTrack(){if(audio.duration)audio.currentTime=0;}
+function nextTrack(){if(audio.duration)audio.currentTime=audio.duration-1;}
+// volume dial
+function drawDial(pct){
+  const c=document.getElementById('dialCanvas');if(!c)return;
+  const ctx=c.getContext('2d'),cx=19,cy=19,r=13;
+  ctx.clearRect(0,0,38,38);
+  ctx.beginPath();ctx.arc(cx,cy,r,Math.PI*0.75,Math.PI*2.25);ctx.strokeStyle='#2a1520';ctx.lineWidth=3;ctx.lineCap='round';ctx.stroke();
+  if(pct>0){ctx.beginPath();ctx.arc(cx,cy,r,Math.PI*0.75,Math.PI*0.75+Math.PI*1.5*pct/100);ctx.strokeStyle='#8b0000';ctx.lineWidth=3;ctx.lineCap='round';ctx.stroke();}
+  const a=Math.PI*0.75+Math.PI*1.5*pct/100;
+  ctx.beginPath();ctx.arc(cx+Math.cos(a)*(r-1),cy+Math.sin(a)*(r-1),2.5,0,Math.PI*2);ctx.fillStyle='#c41e3a';ctx.fill();
+}
+function setVol(v){audio.volume=v/100;document.getElementById('volPct').textContent=Math.round(v)+'%';document.getElementById('volSlider').value=v;drawDial(Number(v));}
+let dialDrag=false;
+document.getElementById('dialCanvas').addEventListener('mousedown',()=>dialDrag=true);
+document.addEventListener('mousemove',e=>{
+  if(!dialDrag)return;
+  const c=document.getElementById('dialCanvas').getBoundingClientRect();
+  const dx=e.clientX-c.left-19,dy=e.clientY-c.top-19;
+  let a=Math.atan2(dy,dx);
+  const start=Math.PI*0.75,range=Math.PI*1.5;
+  let norm=(a-start+Math.PI*2)%(Math.PI*2);
+  if(norm>range) norm=norm<range+Math.PI?range:0;
+  setVol(Math.min(100,Math.max(0,Math.round(norm/range*100))));
+});
+document.addEventListener('mouseup',()=>dialDrag=false);
+drawDial(80);
+
+/* ══════════════════════════════════
+   CLOCK SCHEDULE
+══════════════════════════════════ */
+function drawClock(){
+  const c=document.getElementById('clockCanvas');
+  if(!c) return;
+  const ctx=c.getContext('2d');
+  const W=180,H=180,cx=90,cy=90,R=78;
+  ctx.clearRect(0,0,W,H);
+
+  // Clock face
+  ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.fillStyle='#0a0508';ctx.fill();
+  ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.strokeStyle='#2a1520';ctx.lineWidth=2;ctx.stroke();
+
+  // Active zone: midnight(0h) to 3am — on a 12h clock face, show as a wedge
+  // Using 24h positions: 0-3h = top of clock (12 pos) to 3 position
+  // midnight = top (270deg in standard), 3am = 45deg clockwise from top
+  const midnightAngle = -Math.PI/2; // 12 o'clock
+  const threeAmAngle = -Math.PI/2 + (3/12)*Math.PI*2; // 3 hours on 12h face
+
+  ctx.beginPath();
+  ctx.moveTo(cx,cy);
+  ctx.arc(cx,cy,R-2,midnightAngle,threeAmAngle);
+  ctx.closePath();
+  ctx.fillStyle='rgba(139,0,0,0.35)';ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx,cy);
+  ctx.arc(cx,cy,R-2,midnightAngle,threeAmAngle);
+  ctx.closePath();
+  ctx.strokeStyle='rgba(180,0,0,0.5)';ctx.lineWidth=1;ctx.stroke();
+
+  // Hour ticks
+  for(let i=0;i<12;i++){
+    const a=-Math.PI/2+i*Math.PI/6;
+    const inner=i%3===0?R-12:R-8;
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(a)*(R-3),cy+Math.sin(a)*(R-3));
+    ctx.lineTo(cx+Math.cos(a)*inner,cy+Math.sin(a)*inner);
+    ctx.strokeStyle=i%3===0?'#555':'#333';ctx.lineWidth=i%3===0?2:1;ctx.stroke();
+  }
+  // Hour labels
+  const labels=['12','3','6','9'];
+  ctx.font='bold 9px Cinzel,serif';ctx.fillStyle='#555';ctx.textAlign='center';ctx.textBaseline='middle';
+  [[0,'12'],[1,'3'],[2,'6'],[3,'9']].forEach(([i,lbl])=>{
+    const a=-Math.PI/2+i*Math.PI/2;
+    const lr=R-20;
+    ctx.fillText(lbl,cx+Math.cos(a)*lr,cy+Math.sin(a)*lr);
+  });
+
+  // Current time hands (Central Time = UTC-5 or UTC-6)
+  const now=new Date();
+  // Approximate CT offset (not DST-aware, close enough)
+  const utc=now.getTime()+now.getTimezoneOffset()*60000;
+  const ctOffset=-6*3600000; // CST
+  const ct=new Date(utc+ctOffset);
+  const h=ct.getHours()%12,m=ct.getMinutes(),s=ct.getSeconds();
+
+  const hAngle=-Math.PI/2+((h+m/60)/12)*Math.PI*2;
+  const mAngle=-Math.PI/2+(m/60)*Math.PI*2;
+  const sAngle=-Math.PI/2+(s/60)*Math.PI*2;
+
+  // Hour hand
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(hAngle)*40,cy+Math.sin(hAngle)*40);ctx.strokeStyle='#aaa';ctx.lineWidth=3;ctx.lineCap='round';ctx.stroke();
+  // Minute hand
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(mAngle)*58,cy+Math.sin(mAngle)*58);ctx.strokeStyle='#888';ctx.lineWidth=2;ctx.lineCap='round';ctx.stroke();
+  // Second hand
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(sAngle)*65,cy+Math.sin(sAngle)*65);ctx.strokeStyle='var(--redbright,#c41e3a)';ctx.lineWidth=1;ctx.stroke();
+  // Center dot
+  ctx.beginPath();ctx.arc(cx,cy,4,0,Math.PI*2);ctx.fillStyle='#c41e3a';ctx.fill();
+
+  // Active status
+  const hourCT=ct.getHours();
+  const isActive=hourCT===0||hourCT===1||hourCT===2;
+  const statusEl=document.getElementById('clock-status');
+  if(statusEl){
+    if(isActive){statusEl.textContent='● Currently active in VRChat';statusEl.className='clock-active-note active-now';}
+    else{statusEl.textContent='○ Offline hours';statusEl.className='clock-active-note inactive';}
+  }
+}
+setInterval(drawClock,1000);
+
+/* ══════════════════════════════════
+   MOON SCROLL (smooth with lerp)
+══════════════════════════════════ */
+let moonProgress = 0;
+let moonTarget = 0;
+let moonAnimFrame = null;
+let moonClickBox = {x:0,y:0,r:0};
+
+function initMoon(){
+  const canvas = document.getElementById('moon-canvas');
+  const ctx = canvas.getContext('2d');
+  const layer = document.getElementById('moon-layer');
+
+  function resize(){
+    const page = document.getElementById('main-page');
+    canvas.width = window.innerWidth;
+    canvas.height = Math.max(page.scrollHeight, window.innerHeight);
+    layer.style.height = canvas.height + 'px';
+  }
+  resize();
+  window.addEventListener('resize', ()=>{ resize(); drawMoon(moonProgress, ctx); });
+
+  function drawMoon(t, ctx){
+    const W=canvas.width, H=canvas.height;
+    ctx.clearRect(0,0,W,H);
+    const margin=60;
+    // arch: start left, peak center-top, end right
+    const x = margin + Math.sin(t*Math.PI) * (W - 2*margin);
+    const peakY = 80;
+    const bottomY = H*0.9;
+    // parabolic arc
+    const y = peakY + (bottomY - peakY) * (1 - Math.sin(t*Math.PI));
+
+    const r = 22;
+    moonClickBox = {x, y, r: r*2};
+
+    // outer glow
+    const glowR = ctx.createRadialGradient(x,y,r*0.5,x,y,r*3.5);
+    glowR.addColorStop(0,'rgba(139,0,0,0.25)');
+    glowR.addColorStop(1,'rgba(139,0,0,0)');
+    ctx.fillStyle=glowR;ctx.beginPath();ctx.arc(x,y,r*3.5,0,Math.PI*2);ctx.fill();
+
+    // moon phases
+    const phase = (t * 8) % 8; // 0-8
+    ctx.save();
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle='#1a0808';ctx.fill();
+
+    if(phase < 4){
+      // waxing
+      const illum = (phase % 4) / 4;
+      ctx.fillStyle='#7a0000';
+      ctx.beginPath();ctx.arc(x,y,r,-Math.PI/2,Math.PI/2);ctx.fill(); // right half lit
+      if(illum < 0.5){
+        // crescent: dark ellipse over right half
+        ctx.fillStyle='#1a0808';
+        ctx.beginPath();ctx.ellipse(x,y,r*(1-illum*2),r,0,-Math.PI/2,Math.PI/2);ctx.fill();
+      } else {
+        // gibbous: lit ellipse
+        ctx.fillStyle='#8b0000';
+        ctx.beginPath();ctx.ellipse(x,y,r*((illum-0.5)*2),r,0,-Math.PI/2,Math.PI/2,true);ctx.fill();
+      }
+    } else {
+      const illum = 1-(phase-4)/4;
+      ctx.fillStyle='#7a0000';
+      ctx.beginPath();ctx.arc(x,y,r,Math.PI/2,-Math.PI/2);ctx.fill(); // left half lit
+      if(illum < 0.5){
+        ctx.fillStyle='#1a0808';
+        ctx.beginPath();ctx.ellipse(x,y,r*(1-illum*2),r,0,Math.PI/2,-Math.PI/2);ctx.fill();
+      } else {
+        ctx.fillStyle='#8b0000';
+        ctx.beginPath();ctx.ellipse(x,y,r*((illum-0.5)*2),r,0,Math.PI/2,-Math.PI/2,true);ctx.fill();
+      }
+    }
+    // full moon override
+    if(t > 0.45 && t < 0.55){
+      ctx.globalAlpha=0.95;ctx.fillStyle='#8b0000';
+      ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+
+    // moon border
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.strokeStyle='rgba(139,0,0,0.4)';ctx.lineWidth=1;ctx.stroke();
+  }
+
+  function lerp(a,b,t){ return a+(b-a)*t; }
+
+  function animateMoon(){
+    moonProgress = lerp(moonProgress, moonTarget, 0.04);
+    drawMoon(moonProgress, ctx);
+    moonAnimFrame = requestAnimationFrame(animateMoon);
+  }
+  animateMoon();
+
+  window.addEventListener('scroll', ()=>{
+    const scrolled = window.scrollY;
+    const maxScroll = Math.max(1, document.body.scrollHeight - window.innerHeight);
+    moonTarget = Math.min(1, scrolled / maxScroll);
+  });
+
+  // moon click detection
+  canvas.addEventListener('click', e=>{
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY + window.scrollY - rect.top;
+    const dx = mx - moonClickBox.x, dy = my - moonClickBox.y;
+    if(dx*dx + dy*dy < moonClickBox.r * moonClickBox.r){
+      openMoonModal();
+    }
+  });
+  layer.style.pointerEvents = 'auto';
+}
+
+/* ══════════════════════════════════
+   MOON PASSWORD MODAL
+══════════════════════════════════ */
+const MOON_CODE = [12, 8, 23];
+let moonValues = [1, 1, 1];
+
+function buildMoonDials(){
+  const row = document.getElementById('moon-dials');
+  const labels = ['I','II','III'];
+  row.innerHTML = '';
+  MOON_CODE.forEach((_,i)=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'moon-dial';
+    wrap.innerHTML = `
+      <div class="moon-dial-btns">
+        <button class="moon-dial-btn" onclick="changeDial(${i},1)">▲</button>
+      </div>
+      <div class="moon-dial-num" id="dial-${i}">${moonValues[i]}</div>
+      <div class="moon-dial-btns">
+        <button class="moon-dial-btn" onclick="changeDial(${i},-1)">▼</button>
+      </div>
+      <div class="moon-dial-label">${labels[i]}</div>
+    `;
+    row.appendChild(wrap);
+  });
+}
+function changeDial(idx, dir){
+  moonValues[idx] = ((moonValues[idx]-1+dir+31)%31)+1;
+  document.getElementById('dial-'+idx).textContent = moonValues[idx];
+  document.getElementById('moon-result').textContent = '';
+}
+function checkMoonCode(){
+  const res = document.getElementById('moon-result');
+  if(moonValues[0]===MOON_CODE[0] && moonValues[1]===MOON_CODE[1] && moonValues[2]===MOON_CODE[2]){
+    res.textContent = '✦ The gate opens... ✦';
+    res.className = 'moon-result correct';
+    setTimeout(()=>{ res.textContent = 'Welcome, traveller.'; }, 1500);
+  } else {
+    res.textContent = '✕ The gate remains sealed.';
+    res.className = 'moon-result wrong';
+  }
+}
+function openMoonModal(){ buildMoonDials(); document.getElementById('moon-modal').classList.add('open'); }
+function closeMoonModal(){ document.getElementById('moon-modal').classList.remove('open'); }
+document.getElementById('moon-modal').addEventListener('click',e=>{if(e.target===document.getElementById('moon-modal'))closeMoonModal();});
+
+/* ══════════════════════════════════
+   STARVIEW
+══════════════════════════════════ */
+function openStarview(){
+  const modal = document.getElementById('starview-modal');
+  modal.classList.add('open');
+  const canvas = document.getElementById('star-canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  drawStarview(canvas);
+}
+function closeStarview(){ document.getElementById('starview-modal').classList.remove('open'); }
+
+function drawStarview(canvas){
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // BG
+  const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*0.7);
+  bg.addColorStop(0,'#0a0208'); bg.addColorStop(1,'#020104');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  // Background stars
+  const rng = (seed) => { let x=Math.sin(seed)*10000; return x-Math.floor(x); };
+  for(let i=0;i<220;i++){
+    const sx = rng(i*7.3)*W, sy = rng(i*11.7)*H;
+    const sr = 0.4 + rng(i*3.1)*0.8;
+    const alpha = 0.15 + rng(i*5.9)*0.35;
+    ctx.beginPath();ctx.arc(sx,sy,sr,0,Math.PI*2);
+    ctx.fillStyle=`rgba(200,180,180,${alpha})`;ctx.fill();
+  }
+
+  const starR = 3.5;
+  const lineColor = 'rgba(139,0,0,0.45)';
+  const starColor = '#c41e3a';
+  const glowColor = 'rgba(180,30,30,0.3)';
+  const labelColor = 'rgba(180,140,140,0.7)';
+
+  function drawStar(x,y,bright){
+    const r = bright ? starR*1.3 : starR;
+    // glow
+    const g = ctx.createRadialGradient(x,y,0,x,y,r*3);
+    g.addColorStop(0,glowColor); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.beginPath();ctx.arc(x,y,r*3,0,Math.PI*2);ctx.fill();
+    // star
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=starColor;ctx.fill();
+    ctx.beginPath();ctx.arc(x,y,r*0.4,0,Math.PI*2);ctx.fillStyle='#ff6060';ctx.fill();
+  }
+  function drawLine(x1,y1,x2,y2){
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
+    ctx.strokeStyle=lineColor;ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
+  }
+  function label(text,x,y){
+    ctx.font='11px Cinzel,serif';ctx.fillStyle=labelColor;ctx.textAlign='center';ctx.fillText(text,x,y);
+  }
+
+  const secW = W/3;
+
+  // ── URSA MINOR (left) ──
+  const umCx = secW*0.5, umCy = H*0.42;
+  const um = {
+    polaris:[umCx, umCy-90],
+    s2:[umCx+28, umCy-60],
+    s3:[umCx+22, umCy-28],
+    s4:[umCx+5, umCy],
+    s5:[umCx-30, umCy+30],
+    s6:[umCx-50, umCy+15],
+    s7:[umCx-40, umCy-10],
+  };
+  drawLine(...um.polaris,...um.s2);drawLine(...um.s2,...um.s3);drawLine(...um.s3,...um.s4);
+  drawLine(...um.s4,...um.s5);drawLine(...um.s5,...um.s6);drawLine(...um.s6,...um.s7);
+  Object.entries(um).forEach(([k,v])=>drawStar(...v,k==='polaris'));
+  label('URSA MINOR',umCx,umCy+72);
+  ctx.font='italic 9px IM Fell English,serif';ctx.fillStyle='rgba(150,100,100,0.5)';ctx.textAlign='center';
+  ctx.fillText('The Little Bear',umCx,umCy+87);
+
+  // ── ORION (center) ──
+  const orCx = secW*1.5, orCy = H*0.44;
+  const or = {
+    betelgeuse:[orCx-55, orCy-70],
+    bellatrix:[orCx+55, orCy-70],
+    mintaka:[orCx-28, orCy+5],
+    alnilam:[orCx, orCy+5],
+    alnitak:[orCx+28, orCy+5],
+    saiph:[orCx+48, orCy+80],
+    rigel:[orCx-48, orCy+80],
+  };
+  drawLine(...or.betelgeuse,...or.bellatrix);
+  drawLine(...or.betelgeuse,...or.mintaka);drawLine(...or.bellatrix,...or.alnitak);
+  drawLine(...or.mintaka,...or.alnilam);drawLine(...or.alnilam,...or.alnitak);
+  drawLine(...or.mintaka,...or.rigel);drawLine(...or.alnitak,...or.saiph);
+  drawLine(...or.rigel,...or.saiph);
+  Object.entries(or).forEach(([k,v])=>drawStar(...v,k==='betelgeuse'||k==='rigel'));
+  label('ORION',orCx,orCy+106);
+  ctx.font='italic 9px IM Fell English,serif';ctx.fillStyle='rgba(150,100,100,0.5)';ctx.textAlign='center';
+  ctx.fillText('The Hunter',orCx,orCy+120);
+
+  // ── PEGASUS (right) ──
+  const pgCx = secW*2.5, pgCy = H*0.44;
+  const pg = {
+    markab:[pgCx-70, pgCy+50],
+    scheat:[pgCx-70, pgCy-50],
+    algenib:[pgCx+70, pgCy+50],
+    alpheratz:[pgCx+70, pgCy-50],
+    enif:[pgCx-120, pgCy-5],
+    matar:[pgCx-90, pgCy-90],
+    homam:[pgCx-40, pgCy-95],
+  };
+  // Great Square
+  drawLine(...pg.markab,...pg.scheat);drawLine(...pg.scheat,...pg.alpheratz);
+  drawLine(...pg.alpheratz,...pg.algenib);drawLine(...pg.algenib,...pg.markab);
+  // neck+head
+  drawLine(...pg.scheat,...pg.matar);drawLine(...pg.matar,...pg.homam);drawLine(...pg.homam,...pg.enif);
+  Object.entries(pg).forEach(([k,v])=>drawStar(...v,k==='markab'||k==='enif'));
+  label('PEGASUS',pgCx,pgCy+88);
+  ctx.font='italic 9px IM Fell English,serif';ctx.fillStyle='rgba(150,100,100,0.5)';ctx.textAlign='center';
+  ctx.fillText('The Winged Horse',pgCx,pgCy+102);
+
+  // Greek quote at bottom
+  ctx.font='italic 14px IM Fell English,serif';ctx.fillStyle='rgba(150,110,110,0.4)';ctx.textAlign='center';
+  ctx.fillText('"I have learned silence from the talkative, toleration from the intolerant..." — Homer',W/2,H-28);
+}
+
+/* ══════════════════════════════════
+   INTERESTS / GAMES / DROPDOWNS
+══════════════════════════════════ */
+function buildInterests(){
+  const grid=document.getElementById('int-grid');
+  let ai=null;
+  INTERESTS.forEach((it,i)=>{
+    const el=document.createElement('div');
+    el.className='itag';el.textContent=it.name;
+    el.onclick=()=>{
+      const desc=document.getElementById('int-desc');
+      document.querySelectorAll('.itag').forEach(t=>t.classList.remove('active'));
+      if(ai===i){ai=null;desc.className='itag-desc';}
+      else{el.classList.add('active');ai=i;desc.className='itag-desc open';desc.innerHTML='<strong style="color:var(--red3);font-family:\'Cinzel\',serif;font-size:0.58rem;letter-spacing:0.1em;">'+it.name+'</strong><br><br>'+it.desc;}
+    };
+    grid.appendChild(el);
+  });
+}
+function buildGames(){
+  const list=document.getElementById('games-list');
+  GAMES.forEach(g=>{list.innerHTML+=`<div class="game-item"><span class="game-ico">${g.icon}</span><span class="game-name">${g.name}</span><span class="game-tag">${g.tag}</span></div>`;});
+}
+function toggleDrop(id){
+  document.getElementById(id+'-body').classList.toggle('open');
+  document.getElementById(id+'-arrow').classList.toggle('open');
+}
+
+/* ══════════════════════════════════
+   PARTICLES
+══════════════════════════════════ */
+function buildParticles(){
+  const c=document.getElementById('particles');
+  for(let i=0;i<25;i++){
+    const p=document.createElement('div');p.className='particle';
+    p.style.left=Math.random()*100+'%';
+    p.style.animationDuration=(10+Math.random()*15)+'s';
+    p.style.animationDelay=(Math.random()*12)+'s';
+    p.style.width=p.style.height=(1+Math.random()*2)+'px';
+    c.appendChild(p);
+  }
+}
+
+/* ══════════════════════════════════
+   AVATAR / LINKS
+══════════════════════════════════ */
+function setAvatar(){const url=prompt('Enter avatar image URL:');if(!url)return;document.getElementById('avatarImg').src=url;}
+function editLink(e,el,name){e.preventDefault();const url=prompt('Enter URL for '+name+':');if(url){el.href=url;el.onclick=null;}}
+
+/* ══════════════════════════════════
+   INTRO CANVAS
+══════════════════════════════════ */
+(function(){
+  const canvas=document.getElementById('intro-canvas');
+  const ctx=canvas.getContext('2d');
+  function resize(){canvas.width=canvas.offsetWidth||window.innerWidth;canvas.height=canvas.offsetHeight||window.innerHeight;}
+  resize();
+  const W=()=>canvas.width,H=()=>canvas.height;
+
+  function drawCastle(ctx,x,y,scale,alpha){
+    ctx.save();ctx.globalAlpha=alpha;ctx.fillStyle='#160808';
+    ctx.translate(x,y);ctx.scale(scale,scale);
+    // Main wall body
+    ctx.fillRect(-90,0,180,130);
+    // Battlements top wall
+    for(let i=-90;i<=68;i+=22){ctx.fillRect(i,-24,16,24);}
+    // Left tower
+    ctx.fillRect(-115,-70,46,200);
+    // Right tower
+    ctx.fillRect(69,-70,46,200);
+    // Left tower battlements
+    for(let i=-115;i<=-75;i+=18){ctx.fillRect(i,-90,12,22);}
+    // Right tower battlements
+    for(let i=69;i<=107;i+=18){ctx.fillRect(i,-90,12,22);}
+    // Left tower pointed top
+    ctx.beginPath();ctx.moveTo(-115,-70);ctx.lineTo(-92,-140);ctx.lineTo(-69,-70);ctx.closePath();ctx.fill();
+    // Right tower pointed top
+    ctx.beginPath();ctx.moveTo(69,-70);ctx.lineTo(92,-140);ctx.lineTo(115,-70);ctx.closePath();ctx.fill();
+    // Gate arch
+    ctx.fillRect(-24,40,48,90);
+    ctx.beginPath();ctx.arc(0,40,24,Math.PI,0,false);ctx.fill();
+    // Arrow slits
+    ctx.fillStyle='#0a0408';
+    ctx.fillRect(-80,20,6,16);ctx.fillRect(74,20,6,16);
+    ctx.fillRect(-80,55,6,16);ctx.fillRect(74,55,6,16);
+    ctx.restore();
+  }
+
+  function drawShip(ctx,x,y,alpha){
+    ctx.save();ctx.globalAlpha=alpha;ctx.fillStyle='#160808';
+    ctx.translate(x,y);
+    // Hull
+    ctx.beginPath();ctx.moveTo(-90,0);ctx.quadraticCurveTo(-100,22,85,22);
+    ctx.quadraticCurveTo(110,16,120,4);ctx.quadraticCurveTo(108,-6,85,0);ctx.closePath();ctx.fill();
+    // Ram bow
+    ctx.beginPath();ctx.moveTo(85,4);ctx.lineTo(140,-6);ctx.lineTo(85,0);ctx.closePath();ctx.fill();
+    // Stern curl
+    ctx.beginPath();ctx.moveTo(-90,0);ctx.quadraticCurveTo(-108,-12,-96,-24);
+    ctx.quadraticCurveTo(-82,-6,-90,0);ctx.fill();
+    // Mast 1
+    ctx.fillRect(-8,-100,5,100);
+    // Mast 2 (smaller)
+    ctx.fillRect(25,-60,4,60);
+    // Main sail
+    ctx.beginPath();ctx.moveTo(-3,-95);ctx.quadraticCurveTo(55,-62,48,0);ctx.lineTo(-3,0);ctx.closePath();ctx.fill();
+    // Fore sail
+    ctx.beginPath();ctx.moveTo(29,-56);ctx.quadraticCurveTo(65,-38,60,0);ctx.lineTo(29,0);ctx.closePath();
+    ctx.globalAlpha=alpha*0.6;ctx.fill();ctx.globalAlpha=alpha;
+    // Oars
+    for(let i=-70;i<=70;i+=22){
+      ctx.save();ctx.translate(i,18);ctx.rotate(Math.PI/5);
+      ctx.fillRect(-1.5,0,3,30);ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  let startTime=null;const DUR=5500;
+  function ease(t){return 1-Math.pow(1-t,3);}
+
+  function animate(ts){
+    if(!startTime) startTime=ts;
+    const p=Math.min((ts-startTime)/DUR,1);
+    ctx.fillStyle='#050305';ctx.fillRect(0,0,W(),H());
+
+    // Horizon glow
+    if(p>0.1){
+      const ga=Math.min((p-0.1)/0.4,1)*0.3;
+      ctx.save();ctx.globalAlpha=ga;
+      const g=ctx.createLinearGradient(0,H()*0.65,0,H());
+      g.addColorStop(0,'#4a0015');g.addColorStop(1,'#050305');
+      ctx.fillStyle=g;ctx.fillRect(0,H()*0.65,W(),H()*0.35);ctx.restore();
+    }
+    // Stars
+    ctx.save();
+    for(let i=0;i<80;i++){
+      const sx=((i*137.5)%1)*W(),sy=((i*97.3)%0.65)*H();
+      const fl=0.5+0.5*Math.sin(ts*0.0015+i*0.7);
+      const fadeIn=Math.min(p*2.5,1);
+      const fadeOut=p>0.8?Math.max(0,1-(p-0.8)/0.18):1;
+      ctx.globalAlpha=fl*0.55*fadeIn*fadeOut;
+      ctx.fillStyle=i%5===0?'#c8a0a0':'#c8c4bc';
+      ctx.beginPath();ctx.arc(sx,sy,i%7===0?1.2:0.7,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+
+    // Castles — more visible, brighter
+    const castleData=[[0.12,0.90,0.85],[0.88,0.92,0.75],[0.50,0.95,1.15]];
+    castleData.forEach(([cx,cy,sc],i)=>{
+      const delay=i*0.1;
+      const pp=ease(Math.max(0,Math.min((p-delay)/0.5,1)));
+      const fadeOut=p>0.78?Math.max(0,1-(p-0.78)/0.2):1;
+      const offY=H()*0.1*(1-pp);
+      drawCastle(ctx,cx*W(),cy*H()+offY,sc,pp*fadeOut);
+    });
+
+    // Ship
+    if(p>0.2){
+      const pp=ease(Math.min((p-0.2)/0.45,1));
+      const fadeOut=p>0.78?Math.max(0,1-(p-0.78)/0.2):1;
+      drawShip(ctx,(-0.12+pp*0.55)*W(),H()*0.57,pp*fadeOut);
+    }
+
+    // Water reflections
+    if(p>0.35&&p<0.78){
+      const wa=Math.min((p-0.35)/0.2,1)*0.35;
+      ctx.save();ctx.globalAlpha=wa;ctx.strokeStyle='#2a0d15';ctx.lineWidth=1;
+      for(let i=0;i<6;i++){
+        ctx.beginPath();ctx.ellipse(W()*0.38,H()*0.68+i*9,90+i*22,5,0,0,Math.PI*2);ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Blood moon
+    if(p>0.05&&p<0.78){
+      const pa=Math.min((p-0.05)/0.2,1)*Math.max(0,(0.78-p)/0.12);
+      ctx.save();
+      ctx.globalAlpha=pa*0.7;ctx.fillStyle='#5a0010';
+      ctx.beginPath();ctx.arc(W()*0.76,H()*0.18,30,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=pa*0.3;ctx.fillStyle='#8b0000';
+      ctx.beginPath();ctx.arc(W()*0.76,H()*0.18,44,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+    }
+
+    // Fog / mist
+    if(p>0.3&&p<0.82){
+      const fa=Math.min((p-0.3)/0.25,1)*0.4;
+      ctx.save();ctx.globalAlpha=fa;
+      const fg=ctx.createLinearGradient(0,H()*0.72,0,H()*0.85);
+      fg.addColorStop(0,'transparent');fg.addColorStop(0.5,'#080308');fg.addColorStop(1,'transparent');
+      ctx.fillStyle=fg;ctx.fillRect(0,H()*0.68,W(),H()*0.2);
+      ctx.restore();
+    }
+
+    // Fade out
+    if(p>0.78){
+      ctx.save();ctx.globalAlpha=Math.min((p-0.78)/0.22,1);
+      ctx.fillStyle='#080608';ctx.fillRect(0,0,W(),H());ctx.restore();
+    }
+
+    // Loading bar
+    const lb=document.getElementById('lbar'),lp=document.getElementById('lpct');
+    if(lb) lb.style.width=(p*100)+'%';
+    if(lp) lp.textContent=Math.round(p*100)+'%';
+
+    if(p<1) requestAnimationFrame(animate);
+    else showMain();
+  }
+
+  function showMain(){
+    setTimeout(()=>{
+      document.getElementById('intro').style.transition='opacity 0.9s';
+      document.getElementById('intro').style.opacity='0';
+      setTimeout(()=>{
+        document.getElementById('intro').style.display='none';
+        const mp=document.getElementById('main-page');
+        mp.style.display='block';mp.style.opacity='0';mp.style.transition='opacity 0.9s';
+        setTimeout(()=>{
+          mp.style.opacity='1';
+          buildInterests();buildGames();buildParticles();
+          drawClock();
+          setTimeout(()=>{ initMoon(); loadLog(); initViewCounter(); }, 300);
+        },50);
+      },900);
+    },300);
+  }
+
+  requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>
