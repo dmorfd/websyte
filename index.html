@@ -99,8 +99,7 @@
 
     /* ── A11Y: visible keyboard focus ──
        Keyboard users get a clear gold ring on any interactive element; mouse
-       users don't (via :focus-visible). Nav options opt out (they have their
-       own underline/glow treatment). */
+       users don't (via :focus-visible). */
     a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible,
     select:focus-visible, [tabindex]:focus-visible, [role="button"]:focus-visible,
     summary:focus-visible {
@@ -1320,105 +1319,6 @@
     .footer-handle a:hover{color:rgba(212,168,75,.65);}
     .footer-kanji{font-family:'Noto Serif JP',serif;font-size:.58rem;letter-spacing:.35em;color:rgba(192,57,43,.25);}
 
-    /* ══════════════════════════════
-       HIDDEN NAV — burger + fullscreen overlay
-    ══════════════════════════════ */
-    .nav-burger{
-      position:fixed;top:1.15rem;left:1.25rem;z-index:300;
-      width:42px;height:42px;border-radius:8px;
-      background:rgba(255,255,255,.07);
-      border:1px solid rgba(255,255,255,.2);
-      backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);
-      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
-      cursor:pointer;transition:border-color .25s,box-shadow .25s,background .25s;
-      -webkit-tap-highlight-color:transparent;
-    }
-    .nav-burger span{
-      display:block;width:18px;height:1.5px;border-radius:2px;
-      background:rgba(255,255,255,.88);
-      box-shadow:0 0 6px rgba(255,255,255,.25);
-      transition:transform .35s cubic-bezier(.22,.9,.32,1),opacity .25s,width .3s;
-    }
-    .nav-burger:hover{border-color:rgba(255,255,255,.45);box-shadow:0 0 18px rgba(255,255,255,.18);background:rgba(255,255,255,.12);}
-    .nav-burger:hover span{width:22px;}
-    /* burger morphs into an X while the overlay is open */
-    body.nav-open .nav-burger span:nth-child(1){transform:translateY(6.5px) rotate(45deg);width:20px;}
-    body.nav-open .nav-burger span:nth-child(2){opacity:0;transform:scaleX(.2);}
-    body.nav-open .nav-burger span:nth-child(3){transform:translateY(-6.5px) rotate(-45deg);width:20px;}
-    body.nav-open{overflow:hidden;}
-
-    .nav-overlay{
-      position:fixed;inset:0;z-index:280;
-      display:flex;align-items:center;justify-content:center;
-      background:rgba(8,2,5,0);
-      backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px);
-      opacity:0;visibility:hidden;pointer-events:none;
-      transition:opacity .5s ease,visibility 0s linear .5s,background .5s ease,backdrop-filter .5s ease,-webkit-backdrop-filter .5s ease;
-    }
-    .nav-overlay.open{
-      opacity:1;visibility:visible;pointer-events:auto;
-      background:rgba(8,2,5,.58);
-      backdrop-filter:blur(18px) saturate(1.25);-webkit-backdrop-filter:blur(18px) saturate(1.25);
-      transition:opacity .5s ease,visibility 0s,background .5s ease,backdrop-filter .5s ease,-webkit-backdrop-filter .5s ease;
-    }
-    /* cinematic top/bottom frame lines */
-    .nav-overlay::before,.nav-overlay::after{
-      content:'';position:absolute;left:8%;right:8%;height:1px;
-      background:linear-gradient(90deg,transparent,rgba(212,168,75,.45),transparent);
-      transform:scaleX(0);
-      transition:transform .8s cubic-bezier(.22,1,.36,1) .15s,top .7s cubic-bezier(.22,1,.36,1),bottom .7s cubic-bezier(.22,1,.36,1),opacity .6s ease;
-    }
-    .nav-overlay::before{top:14%;}
-    .nav-overlay::after{bottom:14%;}
-    .nav-overlay.open::before,.nav-overlay.open::after{transform:scaleX(1);}
-    .nav-overlay-inner{display:flex;flex-direction:column;align-items:center;gap:clamp(2rem,6vh,3.2rem);padding:2rem;}
-    .nav-options{display:flex;flex-direction:column;align-items:center;gap:1.9rem;}
-    .nav-option{
-      background:none;border:none;cursor:pointer;
-      display:flex;flex-direction:column;align-items:center;gap:.55rem;
-      padding:.8rem .4rem;text-align:center;
-      opacity:0;transform:translateY(26px);
-      -webkit-tap-highlight-color:transparent;
-    }
-    .nav-overlay.open .nav-option{animation:navOptIn .7s cubic-bezier(.22,.9,.32,1) forwards;}
-    .nav-overlay.open .nav-option:nth-of-type(1){animation-delay:.2s;}
-    .nav-overlay.open .nav-option:nth-of-type(2){animation-delay:.32s;}
-    .nav-overlay.open .nav-option:nth-of-type(3){animation-delay:.44s;}
-    @keyframes navOptIn{to{opacity:1;transform:translateY(0);}}
-    .nav-option-num{font-family:'Share Tech Mono',monospace;font-size:.6rem;letter-spacing:.3em;color:rgba(212,168,75,.5);}
-    .nav-option-label{
-      position:relative;padding-bottom:.35rem;
-      font-family:'Noto Serif JP',serif;font-weight:600;
-      font-size:clamp(1.45rem,4.2vw,2.4rem);letter-spacing:.05em;
-      color:rgba(255,235,235,.88);
-      transition:color .3s,text-shadow .3s;
-    }
-    .nav-option-label::after{
-      content:'';position:absolute;left:50%;bottom:0;height:1px;width:0;
-      background:linear-gradient(90deg,rgba(255,255,255,.95),rgba(238,170,186,.85));
-      box-shadow:0 0 10px rgba(255,200,215,.45);
-      transform:translateX(-50%);transition:width .45s cubic-bezier(.22,1,.36,1);
-    }
-    .nav-option:hover .nav-option-label,.nav-option:focus-visible .nav-option-label{color:#fff;text-shadow:0 0 22px rgba(212,168,75,.45);}
-    .nav-option:hover .nav-option-label::after,.nav-option:focus-visible .nav-option-label::after{width:100%;}
-    .nav-option:focus-visible{outline:none;}
-    .nav-option-sub{font-family:'Noto Serif JP',serif;font-size:.66rem;letter-spacing:.14em;color:rgba(255,200,210,.42);}
-    .nav-options-divider{width:130px;height:1px;align-self:center;background:linear-gradient(90deg,transparent,rgba(212,168,75,.35),transparent);opacity:0;transition:opacity .6s ease .45s;}
-    .nav-overlay.open .nav-options-divider{opacity:1;}
-    .nav-overlay-foot{font-family:'Share Tech Mono',monospace;font-size:.58rem;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,200,210,.28);opacity:0;transition:opacity .6s ease .5s;}
-    .nav-overlay.open .nav-overlay-foot{opacity:1;}
-    @media (max-width:640px){
-      .nav-burger{top:.85rem;left:.85rem;}
-      .nav-options{gap:1.6rem;}
-    }
-
-    @media (prefers-reduced-motion: reduce){
-      .nav-overlay{transition:opacity .2s ease,visibility 0s linear .2s;}
-      .nav-overlay.open{transition:opacity .2s ease,visibility 0s;}
-      .nav-overlay-foot,.nav-options-divider{transition:opacity .2s ease;transform:none;}
-      .nav-overlay.open .nav-option{animation:none;opacity:1;transform:none;}
-    }
-
     @keyframes fadeUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);}}
     /* Discord display-name-style gradient sweep (animated Prism/Gradient). */
     @keyframes dnShimmer{0%{background-position:0% center;}100%{background-position:-200% center;}}
@@ -1929,24 +1829,6 @@
   </div>
 </div>
 
-<!-- HIDDEN NAV — burger (top-left) → fullscreen overlay -->
-<button class="nav-burger" id="navBurger" type="button" aria-label="Open navigation" aria-expanded="false">
-  <span></span><span></span><span></span>
-</button>
-
-<div class="nav-overlay" id="navOverlay" aria-hidden="true">
-  <div class="nav-overlay-inner">
-    <nav class="nav-options">
-      <button class="nav-option" id="navOptHome" type="button">
-        <span class="nav-option-num">01</span>
-        <span class="nav-option-label">YOUR_DOMAIN</span>
-        <span class="nav-option-sub">stay here</span>
-      </button>
-    </nav>
-    <div class="nav-overlay-foot">select a destination</div>
-  </div>
-</div>
-
 <!-- Discord-style server preview (opens when the guild tag is clicked) -->
 <div class="server-pop-scrim" id="serverPop" aria-hidden="true">
   <div class="server-pop-card" role="dialog" aria-modal="true" aria-label="Server preview">
@@ -1976,6 +1858,7 @@
 </div>
 
 <footer class="site-footer">
+  <p class="footer-handle"><a href="/">YOUR_DOMAIN</a></p>
   <p class="footer-handle">site made by <a href="https://discord.com/users/YOUR_DISCORD_USER_ID" target="_blank" rel="noopener">@YOUR_DISCORD_USERNAME</a></p>
   <p class="footer-kanji">桜 · 花 · 道 · 静 · 月</p>
 </footer>
@@ -1985,10 +1868,6 @@
 // ██  CONFIGURE  ██
 // ════════════════════════════════════════════════
 const AUDIO_SRC   = 'https://pub-YOUR_R2_BUCKET_ID.r2.dev/YOUR_SONG.mp3';
-// Site-wide accent: recolours the accent/border variables and the translucent
-// glass cards (applySharedAccent). Previously set by the dream journal's
-// "UI Accent Colour" admin setting; that control is gone, so edit it here.
-const SITE_ACCENT = '#e7a6e0';
 // Bio lines + interests now load from Netlify Blobs (editable via admin page or Discord bot)
 let BIO_LINES = [
   '✦ Write your first bio sentence here. ✦',
@@ -2022,6 +1901,9 @@ async function loadContent() {
     const res = await fetch('/.netlify/functions/get-content');
     if (!res.ok) return;
     const data = await res.json();
+
+    // Site accent known up-front so the glow (applyUiVisuals) can use it.
+    window.__siteAccent = (data.theme && typeof data.theme.siteAccent === 'string') ? data.theme.siteAccent : '';
 
     // Update bio lines + restart typewriter
     if (Array.isArray(data.bioLines) && data.bioLines.length > 0) {
@@ -2224,8 +2106,8 @@ async function loadContent() {
       applyGuildTag(data.guildTag);
     }
 
-    // ══ SITE ACCENT (fixed — see SITE_ACCENT) ══
-    applySharedAccent(SITE_ACCENT);
+    // ══ SITE ACCENT (theme.siteAccent, edited in UI Editor → Color & glow) ══
+    applySharedAccent(window.__siteAccent);
   } catch {}
 }
 
@@ -2847,8 +2729,8 @@ function applyBackgroundEffects(theme) {
   try { if (on) window.__siteStars.start(color); else window.__siteStars.stop(); } catch (e) {}
 }
 
-// One accent colour (SITE_ACCENT) recolours the site's accent/border variables
-// and sets the translucent glass card variables. Card transparency itself is
+// One accent colour (theme.siteAccent) recolours the site's accent/border
+// variables and sets the translucent glass card variables. Card transparency itself is
 // applied in applyUiVisuals.
 function applySharedAccent(color) {
   const root = document.documentElement;
@@ -3008,7 +2890,7 @@ function applyUiVisuals(theme) {
     // Border-glow colour: the dedicated glowColor setting wins; otherwise the
     // site accent.
     const glowColor = (theme.glowColor && /^#[0-9a-fA-F]{6}$/.test(theme.glowColor)) ? theme.glowColor
-                    : (/^#[0-9a-fA-F]{6}$/.test(SITE_ACCENT)) ? SITE_ACCENT
+                    : (typeof window.__siteAccent === 'string' && /^#[0-9a-fA-F]{6}$/.test(window.__siteAccent)) ? window.__siteAccent
                     : ((theme.bgColor1 && /^#[0-9a-fA-F]{6}$/.test(theme.bgColor1)) ? theme.bgColor1 : '#e7a6e0');
     const glowRgb = hexToRgbStr(glowColor);
     const alpha = Math.min(0.95, 0.15 + (glow / 40) * 0.80).toFixed(2);
@@ -5357,38 +5239,6 @@ function fadeInAudio(ms){
   audioFadeTimer = setTimeout(() => { cancelAnimationFrame(audioFadeRAF); audio.volume = tgt(); }, ms + 500);
 }
 audio.addEventListener('play', () => fadeInAudio(typeof window.__audioFadeMs === 'number' ? window.__audioFadeMs : 2000));
-</script>
-
-<script>
-// ════ HIDDEN NAV — burger → fullscreen overlay ════
-(function () {
-  const burger   = document.getElementById('navBurger');
-  const overlay  = document.getElementById('navOverlay');
-  const optHome  = document.getElementById('navOptHome');
-  if (!burger || !overlay) return;
-
-  function openOverlay() {
-    overlay.classList.add('open');
-    overlay.setAttribute('aria-hidden', 'false');
-    burger.setAttribute('aria-expanded', 'true');
-    document.body.classList.add('nav-open');
-  }
-  function closeOverlay() {
-    overlay.classList.remove('open');
-    overlay.setAttribute('aria-hidden', 'true');
-    burger.setAttribute('aria-expanded', 'false');
-    document.body.classList.remove('nav-open');
-  }
-
-  burger.addEventListener('click', () => {
-    if (overlay.classList.contains('open')) closeOverlay(); else openOverlay();
-  });
-  if (optHome) optHome.addEventListener('click', closeOverlay);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeOverlay(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && overlay.classList.contains('open')) closeOverlay();
-  });
-})();
 </script>
 
 <script>

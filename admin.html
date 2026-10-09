@@ -1769,6 +1769,7 @@ function UIEditor({ data, reload }) {
   const [heroBlur, setHeroBlur] = useState(typeof t.heroBlur === "number" ? t.heroBlur : -1);
   const [glow, setGlow] = useState(typeof t.uiGlow === "number" ? t.uiGlow : 0);
   const [glowColor, setGlowColor] = useState(t.glowColor || "");
+  const [siteAccent, setSiteAccent] = useState(safeHex(t.siteAccent, "#e7a6e0"));
   const [bg1, setBg1] = useState(safeHex(t.bgColor1, "#3d0a14"));
   const [bg2, setBg2] = useState(safeHex(t.bgColor2, "#0a0204"));
   const [name1, setName1] = useState(safeHex(t.nameColor1, "#e05555"));
@@ -1796,6 +1797,7 @@ function UIEditor({ data, reload }) {
     setHeroBlur(typeof tt.heroBlur === "number" ? tt.heroBlur : -1);
     setGlow(typeof tt.uiGlow === "number" ? tt.uiGlow : 0);
     setGlowColor(tt.glowColor || "");
+    setSiteAccent(safeHex(tt.siteAccent, "#e7a6e0"));
     setBg1(safeHex(tt.bgColor1, "#3d0a14"));
     setBg2(safeHex(tt.bgColor2, "#0a0204"));
     setName1(safeHex(tt.nameColor1, "#e05555"));
@@ -1814,6 +1816,7 @@ function UIEditor({ data, reload }) {
   const save = async () => {
     if (bodyColor && !isHex(bodyColor)) { showStatus("invalid text color hex", "err"); return; }
     if (glowColor && !isHex(glowColor)) { showStatus("invalid glow colour hex", "err"); return; }
+    if (!isHex(siteAccent)) { showStatus("invalid site accent hex", "err"); return; }
     if (frostedTint && !isHex(frostedTint)) { showStatus("invalid tint hex", "err"); return; }
     if (bgStarColor && !isHex(bgStarColor)) { showStatus("invalid star color hex", "err"); return; }
     try {
@@ -1823,6 +1826,7 @@ function UIEditor({ data, reload }) {
         favGameColor1: favC1, favGameColor2: favC2,
         favGameGradient: favGrad, favGameAnimate: favAnim,
         uiBlur, heroBlur, uiGlow: glow, glowColor: glowColor || "",
+        siteAccent,
         bgColor1: bg1, bgColor2: bg2,
         nameColor1: name1, nameColor2: name2, nameAngle,
         nameGlow,
@@ -1850,6 +1854,7 @@ function UIEditor({ data, reload }) {
     setHeroBlur(typeof tt.heroBlur === "number" ? tt.heroBlur : -1);
     setGlow(typeof tt.uiGlow === "number" ? tt.uiGlow : 0);
     setGlowColor(tt.glowColor || "");
+    setSiteAccent(safeHex(tt.siteAccent, "#e7a6e0"));
     setBg1(safeHex(tt.bgColor1, "#3d0a14"));
     setBg2(safeHex(tt.bgColor2, "#0a0204"));
     setName1(safeHex(tt.nameColor1, "#e05555"));
@@ -1956,9 +1961,16 @@ function UIEditor({ data, reload }) {
               <input className="slider" type="range" min="0" max="40" step="1" value={glow} onChange={(e) => setGlow(+e.target.value)} />
             </div>
             <div className="ctl-row">
+              <span>Site accent <span className="field-sub">accents, borders &amp; glass cards</span></span>
+              <div className="color-row" style={{ flex: "0 0 auto" }}>
+                <input type="color" value={isHex(siteAccent) ? siteAccent : "#e7a6e0"} onChange={(e) => setSiteAccent(e.target.value)} className="swatch" />
+                <input className="input" style={{ width: 84 }} value={siteAccent} onChange={(e) => setSiteAccent(e.target.value)} placeholder="#e7a6e0" maxLength={7} />
+              </div>
+            </div>
+            <div className="ctl-row">
               <span>Glow colour <span className="field-sub">blank = accent</span></span>
               <div className="color-row" style={{ flex: "0 0 auto" }}>
-                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(glowColor) ? glowColor : "#e7a6e0"} onChange={(e) => setGlowColor(e.target.value)} className="swatch" />
+                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(glowColor) ? glowColor : (isHex(siteAccent) ? siteAccent : "#e7a6e0")} onChange={(e) => setGlowColor(e.target.value)} className="swatch" />
                 <input className="input" style={{ width: 84 }} value={glowColor} onChange={(e) => setGlowColor(e.target.value)} placeholder="accent" maxLength={7} />
               </div>
             </div>
