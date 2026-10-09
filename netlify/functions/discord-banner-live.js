@@ -6,7 +6,7 @@
 // them it answers {reason:'no-token'} and the public site stops polling.
 // Replies are CDN-cached for two minutes so visitor traffic never reaches
 // Discord's rate limits.
-const USER_AGENT = 'DiscordBot (https://YOUR_DOMAIN, 1.0)';
+const { DISCORD_USER_AGENT: USER_AGENT } = require('./bot-filter');
 
 const json = (statusCode, body, headers) => ({
   statusCode,

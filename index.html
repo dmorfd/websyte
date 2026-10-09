@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>YOUR_NAME</title>
+  <title></title>
   <link rel="icon" type="image/png" href="/favicon.png"/>
   <link rel="apple-touch-icon" href="/favicon.png"/>
   <!-- Warm up TLS/DNS to the hosts we fetch fonts, avatar/banner, media and presence from -->
@@ -11,7 +11,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link rel="preconnect" href="https://cdn.discordapp.com"/>
   <link rel="preconnect" href="https://api.lanyard.rest" crossorigin/>
-  <link rel="preconnect" href="https://pub-YOUR_R2_BUCKET_ID.r2.dev"/>
   <link rel="preconnect" href="https://i.scdn.co"/>
   <link rel="dns-prefetch" href="https://cdn.discordapp.com"/>
   <!-- MUST stay ABOVE the Google Fonts <link>. An inline script that follows an
@@ -1291,6 +1290,7 @@
     .hud{position:fixed;bottom:1.2rem;right:1.25rem;z-index:200;display:flex;flex-direction:column;align-items:flex-end;gap:.4rem;}
     .hud-location{font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);display:flex;align-items:center;gap:5px;}
     .loc-dot{width:4px;height:4px;border-radius:50%;background:#c0392b;opacity:.6;display:inline-block;}
+    .hud-location.no-loc .loc-dot,.hud-location.no-loc #hudLocText,.hud-location.no-loc #hudViewsSep{display:none !important;}
     .hud-divider{width:100%;height:1px;background:rgba(212,168,75,.18);}
 
     /* Hero card view badge — top left of card, past the side panel */
@@ -1585,16 +1585,17 @@
           </svg>
         </div>
         <!--
-          Avatar auto-updates via Lanyard — no need to change anything when you update your Discord avatar.
+          Avatar auto-updates via Lanyard (Discord ID from the DISCORD_USER_ID env var).
+          The favicon only shows until Lanyard answers, or if it can't.
         -->
         <img class="avatar-img" id="discordAvatar" width="110" height="110"
-             src="https://cdn.discordapp.com/avatars/YOUR_DISCORD_USER_ID/YOUR_AVATAR_HASH.png?size=256"
+             src="/favicon.png"
              alt="Avatar"/>
-        <div class="avatar-fallback" id="avatarFallback">YOUR_INITIALS</div>
+        <div class="avatar-fallback" id="avatarFallback"></div>
         <img class="avatar-deco" id="avatarDeco" src="" alt="" aria-hidden="true"/>
       </div>
 
-      <h1 class="name" id="handleName">YOUR_NAME</h1>
+      <h1 class="name" id="handleName"></h1>
 
       <!-- Lanyard Discord status (requires joining discord.gg/lanyard) -->
       <div class="status-wrap" id="statusWrap" style="opacity:0;transition:opacity .5s;">
@@ -1624,8 +1625,8 @@
             <div class="audio-art-fallback" id="audioArtFallback" style="display:none;">♪</div>
             <div class="audio-meta">
               <div class="audio-title-wrap" id="audioTitleWrap">
-                <p class="audio-title-text" id="audioTitle">YOUR_SONG_TITLE</p>
-                <div class="audio-title-tooltip" id="audioTitleTooltip">YOUR_SONG_TITLE</div>
+                <p class="audio-title-text" id="audioTitle"></p>
+                <div class="audio-title-tooltip" id="audioTitleTooltip"></div>
               </div>
               <p class="audio-artist-text" id="audioArtist">Artist Name</p>
             </div>
@@ -1722,7 +1723,7 @@
               </div>
             </div>
           </div>
-          <a class="dprof-add" href="https://discord.com/users/YOUR_DISCORD_USER_ID" target="_blank" rel="noopener noreferrer">Add on Discord →</a>
+          <a class="dprof-add" id="dprofAdd" target="_blank" rel="noopener noreferrer">Add on Discord →</a>
         </div>
       </div>
     </div>
@@ -1823,7 +1824,8 @@
 <div class="hud" id="hudWrap">
   <div class="hud-location">
     <span class="loc-dot"></span>
-    <span>YOUR_LOCATION</span>
+    <!-- Optional: type a location between these tags (e.g. City, Country). Left empty, it's hidden. -->
+    <span id="hudLocText"></span>
     <span class="hud-divider-dot" id="hudViewsSep" style="display:none;"> · </span>
     <span id="hudViewCount" style="display:none;">0 views</span>
   </div>
@@ -1858,8 +1860,8 @@
 </div>
 
 <footer class="site-footer">
-  <p class="footer-handle"><a href="/">YOUR_DOMAIN</a></p>
-  <p class="footer-handle">site made by <a href="https://discord.com/users/YOUR_DISCORD_USER_ID" target="_blank" rel="noopener">@YOUR_DISCORD_USERNAME</a></p>
+  <p class="footer-handle"><a href="/" id="footerSite"></a></p>
+  <p class="footer-handle">site made by <a href="https://discord.com/users/795035082322739230" target="_blank" rel="noopener">@a_random_person121</a></p>
   <p class="footer-kanji">桜 · 花 · 道 · 静 · 月</p>
 </footer>
 
@@ -1867,7 +1869,14 @@
 // ════════════════════════════════════════════════
 // ██  CONFIGURE  ██
 // ════════════════════════════════════════════════
-const AUDIO_SRC   = 'https://pub-YOUR_R2_BUCKET_ID.r2.dev/YOUR_SONG.mp3';
+// Footer link + HUD location: the domain comes from the address bar; an
+// empty location hides itself (see #hudLocText).
+(function () {
+  const site = document.getElementById('footerSite');
+  if (site) site.textContent = location.hostname.replace(/^www\./, '');
+  const loc = document.getElementById('hudLocText');
+  if (loc && !loc.textContent.trim()) loc.parentElement.classList.add('no-loc');
+})();
 // Bio lines + interests now load from Netlify Blobs (editable via admin page or Discord bot)
 let BIO_LINES = [
   '✦ Write your first bio sentence here. ✦',
@@ -2030,13 +2039,14 @@ async function loadContent() {
       }
     }
 
-    // Update handle name
-    if (data.handle && typeof data.handle === 'object' && data.handle.name) {
-      const nameEl = document.getElementById('handleName');
-      if (nameEl) { nameEl.textContent = data.handle.name; fitHeroName(); }
-      // Also update the page title
-      document.title = data.handle.name;
-    }
+    // Update handle name. Blank in the admin = use the Discord display name
+    // (filled in by fetchLanyard).
+    window.__handleFromAdmin = !!(data.handle && typeof data.handle === 'object' && typeof data.handle.name === 'string' && data.handle.name.trim());
+    if (window.__handleFromAdmin) setHeroName(data.handle.name.trim());
+    else if (window.__discordName) setHeroName(window.__discordName);
+
+    // Whose Discord profile Lanyard shows: the DISCORD_USER_ID env var.
+    if (typeof data.discordUserId === 'string' && window.__setDiscordUserId) window.__setDiscordUserId(data.discordUserId);
 
     // Update About me paragraph
     if (data.about && typeof data.about === 'object' && data.about.text) {
@@ -4130,6 +4140,15 @@ window.addEventListener('resize', () => {
 try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitHeroName); } catch (e) {}
 window.addEventListener('load', fitHeroName);
 
+// Hero name + page title + avatar monogram, all from one name.
+function setHeroName(name) {
+  const nameEl = document.getElementById('handleName');
+  if (nameEl && nameEl.textContent !== name) { nameEl.textContent = name; fitHeroName(); }
+  document.title = name;
+  const fb = document.getElementById('avatarFallback');
+  if (fb) fb.textContent = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => Array.from(w)[0]).join('').toUpperCase();
+}
+
 // ════ AVATAR FALLBACK ════
 // The <img> ships with a build-time src that goes stale the moment the Discord
 // avatar changes, so it 404s and the error handler hides it. Lanyard then sets
@@ -4147,8 +4166,8 @@ avatarImg.addEventListener('error',()=>{avatarImg.style.display='none';avatarFB.
 avatarImg.addEventListener('load',()=>{
   avatarImg.style.display='';
   if (avatarFB) avatarFB.style.display='none';
-  // Don't cache the generic Discord default — only a real user avatar.
-  try { if (avatarImg.src.indexOf('/embed/avatars/') === -1) localStorage.setItem('avatarUrlCache', avatarImg.src); } catch (e) {}
+  // Only cache a real user avatar — not the generic Discord default or the favicon placeholder.
+  try { if (avatarImg.src.indexOf('cdn.discordapp.com/avatars/') !== -1) localStorage.setItem('avatarUrlCache', avatarImg.src); } catch (e) {}
 });
 
 // ════ BIO TYPEWRITER ════
@@ -4370,7 +4389,26 @@ function logSocialClick(name) {
 }
 
 // ════ LANYARD — DISCORD STATUS + AUTO AVATAR ════
-const LANYARD_USER_ID = 'YOUR_DISCORD_USER_ID';
+// Whose profile to show: the DISCORD_USER_ID env var, served by get-content.
+// The last one seen is cached so return visits start Lanyard straight away.
+let LANYARD_USER_ID = '';
+try { const c = localStorage.getItem('discordIdCache'); if (/^\d{15,25}$/.test(c || '')) LANYARD_USER_ID = c; } catch (e) {}
+function applyDiscordUserLinks() {
+  const add = document.getElementById('dprofAdd');
+  if (add) {
+    if (LANYARD_USER_ID) add.href = `https://discord.com/users/${LANYARD_USER_ID}`;
+    else add.removeAttribute('href');
+  }
+}
+applyDiscordUserLinks();
+window.__setDiscordUserId = function (id) {
+  id = /^\d{15,25}$/.test(id || '') ? id : '';
+  if (id === LANYARD_USER_ID) return;
+  LANYARD_USER_ID = id;
+  try { if (id) localStorage.setItem('discordIdCache', id); else localStorage.removeItem('discordIdCache'); } catch (e) {}
+  applyDiscordUserLinks();
+  if (id) fetchLanyard();
+};
 const STATUS_LABELS = {online:'online',idle:'idle',dnd:'do not disturb',offline:'offline'};
 // Discord public_flags → badge bits (see Discord API docs)
 // These are the badges Lanyard exposes via public_flags
@@ -4619,6 +4657,7 @@ function applyDisplayNameStyle(el, styles) {
 }
 
 async function fetchLanyard() {
+  if (!LANYARD_USER_ID) return;
   try {
     const res = await fetch(`https://api.lanyard.rest/v1/users/${LANYARD_USER_ID}`);
     if (!res.ok) return;
@@ -4731,6 +4770,12 @@ async function fetchLanyard() {
       dpUser.textContent = u.display_name || u.global_name || u.username || 'unknown';
       applyDisplayNameStyle(dpUser, u.display_name_styles);
     }
+    // No display handle set in the admin → the hero shows the Discord name.
+    if (data.discord_user) {
+      const u = data.discord_user;
+      window.__discordName = u.display_name || u.global_name || u.username || '';
+      if (!window.__handleFromAdmin && window.__discordName) setHeroName(window.__discordName);
+    }
     if (dpDot) dpDot.className = `dprof-status-dot ${s}`;
 
     if (dpBadge) {
@@ -4782,7 +4827,7 @@ async function fetchLanyard() {
         // Replace plain dpActName with an <a> linking to the Spotify track
         const spotifyUrl = spotify.track_id
           ? `https://open.spotify.com/track/${spotify.track_id}`
-          : 'https://open.spotify.com/user/YOUR_SPOTIFY_USER_ID';
+          : `https://open.spotify.com/search/${encodeURIComponent([spotify.song, spotify.artist].filter(Boolean).join(' '))}`;
         const newName = document.createElement('a');
         newName.id = 'dprofActName';
         newName.className = 'dprof-act-name';
@@ -5062,7 +5107,7 @@ document.querySelectorAll('.interest-card').forEach(card=>{
 // plays (mobile just won't fade until CORS is added to the bucket).
 const audio = new Audio();
 audio.crossOrigin = 'anonymous';
-audio.src = AUDIO_SRC;
+// The song itself comes from the admin (Content Editor → Audio) via loadContent.
 window.__siteAudio = audio; // exposed so other code can reach the player
 audio.loop = true; audio.volume = 0.8;
 

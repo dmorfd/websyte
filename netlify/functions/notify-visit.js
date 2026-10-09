@@ -7,12 +7,11 @@
 // without a Turnstile pass are dropped, and each client pings at most once per
 // 30 minutes (plus a global cap) so the channel can't be flooded.
 const { getStore } = require('@netlify/blobs');
-const { isBot, isCrossSite, blockedByGate, userAgent, parseUserAgent, BROWSER_NAMES, OS_NAMES, DEVICE_NAMES } = require('./bot-filter');
+const { isBot, isCrossSite, blockedByGate, userAgent, parseUserAgent, BROWSER_NAMES, OS_NAMES, DEVICE_NAMES, DISCORD_USER_AGENT: USER_AGENT } = require('./bot-filter');
 const { rateLimit } = require('./lib/rate-limit');
 const { countryName, countryFlag } = require('./lib/countries');
 const { countryOf } = require('./log-event');
 
-const USER_AGENT = 'DiscordBot (https://YOUR_DOMAIN, 1.0)';
 
 const contentStore = () => getStore({
   name: 'site-content',

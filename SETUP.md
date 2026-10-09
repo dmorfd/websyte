@@ -84,7 +84,7 @@ redeploy.
 |---|---|---|
 | `ADMIN_KEY` | `lib/admin-auth.js` (every admin endpoint goes through it) | The admin password. Make it long and random, e.g. `openssl rand -base64 32`. Surrounding whitespace is trimmed. If it's missing, admin endpoints answer 500 (they fail closed) |
 | `DISCORD_BOT_TOKEN` | `discord-banner-live.js`, `get-guild-preview.js` | Bot token only, no `Bot ` prefix. Without it the banner falls back to the admin's static banner, and the guild preview uses the public widget, if the server has one enabled |
-| `DISCORD_USER_ID` | `discord-banner-live.js`, `get-guild-preview.js` | The friend's numeric user ID. The guild preview only looks up the server in **this user's** guild tag |
+| `DISCORD_USER_ID` | `get-content.js` (both pages), `discord-banner-live.js`, `get-guild-preview.js` | The friend's numeric user ID. **This one value decides whose Discord profile the site shows**: both pages read it from `get-content` and ask Lanyard for that user's avatar, name, Nitro name effect, guild tag, status and Spotify. The guild preview only looks up the server in this user's guild tag |
 | `DISCORD_WEBHOOK_URL` | `notify-visit.js` | Must be a `https://discord.com/api/webhooks/…` URL. If it's unset, visit pings are skipped silently |
 | `TURNSTILE_SECRET_KEY` | `verify-turnstile.js`, `bot-filter.js` | Verifies Turnstile tokens, and also signs the HMAC gate-pass cookie. Rotating it signs every visitor out of the gate (they just solve it again) |
 | `NETLIFY_SITE_ID` | every function: Blobs storage, rate limits and the lockout | Site configuration → Site details → Site ID |
@@ -104,69 +104,34 @@ None of these use the dead keys (`showcase`, `current-job`, `messages`,
 
 ---
 
-## 3. Personal values to replace
+## 3. What fills in by itself, and what's left to edit
 
-All of these are placeholders, not invented values. Search for `YOUR_` to find
-them all.
+Nothing in `admin.html` or the functions needs editing. Both pages pick up who
+the site belongs to while they run:
 
-### index.html
-| Line | Placeholder | What goes there |
+| What | Where it comes from |
+|---|---|
+| Discord avatar, name, Nitro name effect, guild tag, status, Spotify, "Add on Discord" link | Lanyard, for the user in the `DISCORD_USER_ID` env var |
+| Name on the hero card and the tab title | Admin → Content Editor → A Identity → Display handle. **Leave it blank to use the Discord display name.** |
+| Avatar initials (only shown if no picture loads) | The name above |
+| Song, artist, cover | Admin → Content Editor → D Audio |
+| Domain (footer link, admin login, sidebar, help text) | The address bar |
+| Admin home greetings | `{name}` in `INTRO_GREETINGS` becomes the display handle. With none set, ", {name}" is dropped |
+| Discord API User-Agent | Netlify's built-in `URL` variable |
+
+Only three things in `index.html` are still typed in by hand:
+
+| Line | What | Notes |
 |---|---|---|
-| 6 | `YOUR_NAME` | Page title. At runtime it's overwritten by the admin's display handle |
-| 14 | `https://pub-YOUR_R2_BUCKET_ID.r2.dev` | The friend's R2 public URL (preconnect) |
-| 1591 | `YOUR_DISCORD_USER_ID`, `YOUR_AVATAR_HASH` | First-paint avatar. Lanyard replaces it within seconds, so a 404 here is harmless |
-| 1593 | `YOUR_INITIALS` | Avatar fallback monogram |
-| 1597 | `YOUR_NAME` | Hero name shown before content loads |
-| 1627–1628 | `YOUR_SONG_TITLE` | Song title shown before content loads |
-| 1725 | `YOUR_DISCORD_USER_ID` | The "Add on Discord →" link |
-| 1826 | `YOUR_LOCATION` | Location in the bottom-right HUD |
-| 1861 | `YOUR_DOMAIN` | Footer site link (the hamburger menu's only entry used to be here) |
-| 1862 | `YOUR_DISCORD_USER_ID`, `@YOUR_DISCORD_USERNAME` | Footer "site made by" credit. Delete the line to drop the credit |
-| 1870 | `https://pub-YOUR_R2_BUCKET_ID.r2.dev/YOUR_SONG.mp3` | Fallback song URL |
-| 3920 | `YOUR_TURNSTILE_SITE_KEY` | Turnstile **site** key (§5) |
-| 4373 | `YOUR_DISCORD_USER_ID` | Lanyard presence user ID |
-| 4785 | `YOUR_SPOTIFY_USER_ID` | Spotify profile link, used when a track has no ID |
+| 3930 | `YOUR_TURNSTILE_SITE_KEY` | The Turnstile **site** key (§5). Only needed if the gate is switched on in Settings → Danger Zone. |
+| 1828 | `<span id="hudLocText"></span>` | Optional location in the bottom-right corner, e.g. `<span id="hudLocText">Berlin, Germany</span>`. Left empty, it's hidden. There's no admin field for it. |
+| 1864 | "site made by @a_random_person121" | Your credit as the person who made the site, linking to your Discord. Edit or delete the line if you'd rather not. |
 
-### admin.html
-| Line | Placeholder | What goes there |
-|---|---|---|
-| 6 | `YOUR_DOMAIN` | Tab title |
-| 768, 800 | `YOUR_INITIALS` | Login and sidebar monogram, shown only if both the avatar and the favicon fail |
-| 772 | `YOUR_DOMAIN` | Login subtitle |
-| 817 | `YOUR_DOMAIN` | Sidebar footer |
-| 828 | `YOUR_DISCORD_USER_ID` | Admin avatar, via Lanyard |
-| 1081, 1082 | `YOUR_NAME` | Home greetings |
-| 1092 | `YOUR_NICKNAME` | Home greeting |
-| 1498 | `YOUR_NAME` | Hint on the display-handle input |
-| 1941 | `YOUR_NAME` | Name-gradient preview text in the UI Editor |
-| 3171 | `YOUR_DOMAIN` | Settings help text |
-
-**Your call:** the other home greetings in `INTRO_GREETINGS` (admin.html lines
-1080–1099: "Pharloom needs your saving!", "The Radiance is taking over!",
-"Fantasizing over anime girls now, heh?", "Lucid Dreaming~...") and
-`INTRO_SUBTITLE` (line 1100) are your own flavour text. I left them unchanged.
-"Lucid Dreaming~..." is a nod to the removed Dream Journal, so you may want to
-drop it.
-
-### Backend
-| File:line | Placeholder | What goes there |
-|---|---|---|
-| `package.json:2` | `your-site-name` | npm package name (lowercase, no spaces) |
-| `netlify/functions/get-content.js:48` | `YOUR_SONG_TITLE` | Default song title, used until one is saved in the admin |
-| `netlify/functions/get-content.js:50` | `https://pub-YOUR_R2_BUCKET_ID.r2.dev/YOUR_SONG.mp3` | Default song URL |
-| `netlify/functions/get-content.js:62` | `YOUR_NAME` | Default display handle |
-| `netlify/functions/discord-banner-live.js:9` | `YOUR_DOMAIN` | Discord API User-Agent |
-| `netlify/functions/get-guild-preview.js:13` | `YOUR_DOMAIN` | Discord API User-Agent |
-| `netlify/functions/notify-visit.js:15` | `YOUR_DOMAIN` | Webhook User-Agent |
-
-There are five Discord ID spots, and all are placeholders:
-- index.html 1591 (ID **and** avatar hash)
-- index.html 1725
-- index.html 1862
-- index.html 4373
-- admin.html 828
-
-The server side gets the ID from the `DISCORD_USER_ID` env var.
+**Your call:** the other home greetings in `INTRO_GREETINGS` (admin.html,
+"Pharloom needs your saving!", "The Radiance is taking over!", "Fantasizing over
+anime girls now, heh?", "Lucid Dreaming~...") and `INTRO_SUBTITLE` are your own
+flavour text. I left them unchanged. "Lucid Dreaming~..." is a nod to the
+removed Dream Journal, so you may want to drop it.
 
 ---
 
@@ -177,8 +142,8 @@ The server side gets the ID from the `DISCORD_USER_ID` env var.
   URLs into the admin.
 - **`favicon.png`**: replace the artwork with the friend's.
 - **`cover.png`**: keep the filename and replace the artwork. It's the default
-  song cover (`get-content.js:51` `coverUrl: '/cover.png'`) and the soundbar's
-  first-paint `<img>` (index.html 1622).
+  song cover (`coverUrl: '/cover.png'` in `get-content.js`) and the soundbar's
+  first-paint `<img>` in `index.html`.
   - There's **no `og:image` tag** in the uploaded `index.html`, so cover.png
     isn't a link-preview image here.
   - To get one, add
@@ -202,11 +167,11 @@ The server side gets the ID from the `DISCORD_USER_ID` env var.
    - Hostnames: the friend's custom domain **and** their `*.netlify.app`
      subdomain.
    - Mode: Managed.
-   - Site key → index.html line 3920. Secret key → Netlify env
+   - Site key → index.html line 3930. Secret key → Netlify env
      `TURNSTILE_SECRET_KEY`.
 2. **R2** → create a bucket → Settings → Public access → enable the `r2.dev`
-   subdomain, or connect a custom domain. Put the public URL into index.html
-   lines 14 and 1870 and `get-content.js:50`.
+   subdomain, or connect a custom domain. Media URLs are pasted into the admin
+   (e.g. Content Editor → D Audio), so no file needs the bucket URL.
 3. **R2 CORS** (bucket → Settings → CORS policy): allow `GET` and `HEAD` from
    the friend's domain(s) and the `*.netlify.app` URL. For example:
    ```json
@@ -222,7 +187,7 @@ The server side gets the ID from the `DISCORD_USER_ID` env var.
 1. The friend joins the Lanyard server (`discord.gg/lanyard`). Live status, the
    avatar and Spotify all come from Lanyard.
 2. Settings → Advanced → Developer Mode → right-click their profile → Copy User
-   ID. Use it for the five spots in §3 and Netlify env `DISCORD_USER_ID`.
+   ID → Netlify env `DISCORD_USER_ID`. That's the only place it goes.
 3. Developer Portal → New Application → Bot → Reset Token → Netlify env
    `DISCORD_BOT_TOKEN`.
    - The banner endpoint needs no server invite.
@@ -266,7 +231,7 @@ The server side gets the ID from the `DISCORD_USER_ID` env var.
 - At `#e7a6e0`, every kept card's computed style matches your original site.
 
 **Hamburger → footer link.** The burger icon, its overlay and its script are
-gone. The one remaining link is `YOUR_DOMAIN` in the footer (index.html 1861).
+gone. The one remaining link is in the footer, and shows the site's own domain.
 
 **Job title and Workplace are not in Content Editor A.**
 - Your checklist listed them under Identity, but they were the Current Job
