@@ -45,9 +45,9 @@ const DEFAULT_INTEREST_META = {
 };
 
 const DEFAULT_SONG = {
-  title: 'YOUR_SONG_TITLE',
-  artist: 'Artist Name',
-  audioUrl: 'https://pub-YOUR_R2_BUCKET_ID.r2.dev/YOUR_SONG.mp3',
+  title: '',                  // set in Admin → Content Editor → Audio
+  artist: '',
+  audioUrl: '',
   coverUrl: '/cover.png',
   audioSource: 'song',        // 'song' = soundbar track | 'video' = background video's own audio
   fadeIn: 2,                  // seconds, 0 = off
@@ -59,7 +59,7 @@ const DEFAULT_SONG = {
 };
 
 const DEFAULT_YOUTUBE = { url: '' };
-const DEFAULT_HANDLE = { name: 'YOUR_NAME' };
+const DEFAULT_HANDLE = { name: '' };   // blank = the site shows the Discord display name
 const DEFAULT_ABOUT = { text: 'A short paragraph about you. Editable from the admin panel.' };
 
 const DEFAULT_THEME = {
@@ -162,6 +162,11 @@ function normalizeSections(list) {
   return out;
 }
 
+const discordUserId = () => {
+  const id = String(process.env.DISCORD_USER_ID || '').trim();
+  return /^\d{15,25}$/.test(id) ? id : '';
+};
+
 const json = (statusCode, body, headers) => ({
   statusCode,
   headers: {
@@ -244,6 +249,10 @@ exports.handler = async (event) => {
     socials: Array.isArray(obj(b.socials).socials) ? obj(b.socials).socials : DEFAULT_SOCIALS,
     enterScreen: { ...DEFAULT_ENTER_SCREEN, ...obj(b['enter-screen']) },
     guildTag: { ...DEFAULT_GUILD_TAG, ...obj(b['guild-tag']) },
+    // Whose Discord profile both pages show (via Lanyard). Not a secret — it's
+    // in every Lanyard request anyway — and keeping it in the env var means
+    // neither HTML file hard-codes it.
+    discordUserId: discordUserId(),
     count,
     views: count,
     viewsResetCount: Number(views.resetCount) || 0,

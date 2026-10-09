@@ -10,7 +10,7 @@
 // can't be used to look up arbitrary servers the bot happens to be in.
 const { rateLimit, tooManyRequests } = require('./lib/rate-limit');
 
-const USER_AGENT = 'DiscordBot (https://YOUR_DOMAIN, 1.0)';
+const { DISCORD_USER_AGENT: USER_AGENT } = require('./bot-filter');
 const DISCORD_EPOCH = 1420070400000n;
 
 const json = (statusCode, body, headers) => ({

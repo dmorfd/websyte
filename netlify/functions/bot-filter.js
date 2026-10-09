@@ -155,6 +155,11 @@ async function blockedByGate(event, contentStore) {
   return !!(features && features.turnstileGate === true);
 }
 
+// User-Agent for calls to Discord, in the "DiscordBot (url, version)" form its
+// API asks for. Netlify gives functions the site's main URL as process.env.URL.
+const SITE_URL = /^https?:\/\/[\w.-]+(?::\d+)?\/?$/.test(process.env.URL || '') ? process.env.URL.replace(/\/$/, '') : 'https://www.netlify.com';
+const DISCORD_USER_AGENT = `DiscordBot (${SITE_URL}, 1.0)`;
+
 exports.isBot = isBot;
 exports.isCrossSite = isCrossSite;
 exports.blockedByGate = blockedByGate;
@@ -165,6 +170,7 @@ exports.parseUserAgent = parseUserAgent;
 exports.BROWSER_NAMES = BROWSER_NAMES;
 exports.OS_NAMES = OS_NAMES;
 exports.DEVICE_NAMES = DEVICE_NAMES;
+exports.DISCORD_USER_AGENT = DISCORD_USER_AGENT;
 
 // Not a public endpoint — answer 404 if someone requests it directly.
 exports.handler = async () => ({

@@ -1,5 +1,5 @@
 {
-  "name": "your-site-name",
+  "name": "personal-site",
   "version": "1.0.0",
   "private": true,
   "description": "Personal site — static HTML on Netlify with Netlify Functions + Blobs.",

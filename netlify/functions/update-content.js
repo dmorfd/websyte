@@ -287,7 +287,8 @@ const HANDLERS = {
   },
   handle: {
     blob: 'handle',
-    build: (body) => ({ name: text(body.name, 'Display handle', 50, { required: true }) }),
+    // Blank is allowed: the public site then shows the Discord display name.
+    build: (body) => ({ name: text(body.name, 'Display handle', 50) }),
   },
   // Single interest (e.g. from a Discord bot command): {name: 'cats', text}.
   interest: {

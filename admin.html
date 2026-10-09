@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Admin Panel · YOUR_DOMAIN</title>
+<title>Admin Panel</title>
 <link rel="icon" type="image/png" href="/favicon.png"/>
 <link rel="apple-touch-icon" href="/favicon.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -714,6 +714,7 @@ function Login({ onSuccess }) {
   // Show the real profile picture on the lock screen; fall back to the site
   // favicon, then to the monogram if neither image loads.
   const avatarUrl = useDiscordAvatar();
+  const identity = useSiteIdentity();
   const [markErr, setMarkErr] = useState(false);
   const markSrc = !markErr ? (avatarUrl || "/favicon.png") : null;
 
@@ -765,11 +766,11 @@ function Login({ onSuccess }) {
       <form className="login-card" onSubmit={submit}>
         <div className="login-brand">
           <div className="login-mark">
-            {markSrc ? <img src={markSrc} alt="" onError={() => setMarkErr(true)} /> : "YOUR_INITIALS"}
+            {markSrc ? <img src={markSrc} alt="" onError={() => setMarkErr(true)} /> : initialsOf(identity.name)}
           </div>
           <div>
             <h1 className="login-title">Admin Panel</h1>
-            <div className="login-sub">YOUR_DOMAIN</div>
+            <div className="login-sub">{SITE_HOST}</div>
           </div>
         </div>
         <div className="login-field">
@@ -791,13 +792,14 @@ function Sidebar({ active, setActive, open, close, onLock }) {
   // Profile picture next to "Admin Panel" — live Discord avatar, falling back
   // to the site favicon, falling back to the monogram tile.
   const avatarUrl = useDiscordAvatar();
+  const identity = useSiteIdentity();
   const [imgErr, setImgErr] = useState(false);
   const src = !imgErr ? (avatarUrl || "/favicon.png") : null;
   return (
     <aside className={"sidebar " + (open ? "open" : "")}>
       <div className="brand">
         <div className="brand-mark">
-          {src ? <img src={src} alt="" onError={() => setImgErr(true)} /> : "YOUR_INITIALS"}
+          {src ? <img src={src} alt="" onError={() => setImgErr(true)} /> : initialsOf(identity.name)}
         </div>
         <div>
           <div className="brand-title">Admin Panel</div>
@@ -814,7 +816,7 @@ function Sidebar({ active, setActive, open, close, onLock }) {
         })}
       </nav>
       <div className="nav-tail">
-        <div style={{ display: "flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}><span className="dot"></span><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>YOUR_DOMAIN</span></div>
+        <div style={{ display: "flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}><span className="dot"></span><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{SITE_HOST}</span></div>
         <button className="nav-lock" onClick={onLock} title="Lock admin · log out">LOCK</button>
       </div>
     </aside>
@@ -825,14 +827,47 @@ function Sidebar({ active, setActive, open, close, onLock }) {
 /* Fetches the user's current Discord avatar via Lanyard. Polls every 5 min
    so the avatar auto-updates if you change it on Discord. Returns the CDN URL,
    or null if Lanyard can't be reached / user isn't tracked. */
-const DISCORD_USER_ID = "YOUR_DISCORD_USER_ID";
+// The site's host name, shown on the login card, the sidebar and in help text.
+const SITE_HOST = location.hostname.replace(/^www\./, "");
+document.title = "Admin Panel · " + SITE_HOST;
+
+// Who the site belongs to: the Discord user ID (DISCORD_USER_ID env var) and
+// the display handle, read once from the public get-content response — it's
+// needed before login too, so it doesn't use the admin key.
+let __siteIdentity = null;
+function loadSiteIdentity() {
+  if (!__siteIdentity) {
+    __siteIdentity = fetch("/.netlify/functions/get-content")
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d) => ({
+        discordUserId: typeof d.discordUserId === "string" && /^\d{15,25}$/.test(d.discordUserId) ? d.discordUserId : "",
+        name: d.handle && typeof d.handle.name === "string" ? d.handle.name.trim() : "",
+      }))
+      .catch(() => { __siteIdentity = null; return { discordUserId: "", name: "" }; });
+  }
+  return __siteIdentity;
+}
+function useSiteIdentity() {
+  const [identity, setIdentity] = useState({ discordUserId: "", name: "" });
+  useEffect(() => {
+    let cancelled = false;
+    loadSiteIdentity().then((v) => { if (!cancelled) setIdentity(v); });
+    return () => { cancelled = true; };
+  }, []);
+  return identity;
+}
+// "Jane Doe" → "JD". Shown only when the avatar and the favicon both fail.
+const initialsOf = (name) => (name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => Array.from(w)[0]).join("").toUpperCase();
+
 function useDiscordAvatar() {
   const [url, setUrl] = useState(null);
   useEffect(() => {
     let cancelled = false;
     const fetchAvatar = async () => {
       try {
-        const res = await fetch("https://api.lanyard.rest/v1/users/" + DISCORD_USER_ID);
+        const { discordUserId } = await loadSiteIdentity();
+        if (!discordUserId) return;
+        const res = await fetch("https://api.lanyard.rest/v1/users/" + discordUserId);
         if (!res.ok) return;
         const json = await res.json();
         const u = json?.data?.discord_user;
@@ -1076,10 +1111,11 @@ function useAnalytics(range) {
 /* ═══════════════ CINEMATIC HOME (front page) ═══════════════ */
 // ⚙ EDIT THESE TWO LINES to customize your intro title & subtitle:
 // ⚙ Customize the random greetings here. One is picked at random on each
-// page load. The subtitle stays the same.
+// page load. The subtitle stays the same. {name} becomes the display handle
+// (Content Editor → Identity); with no handle set, ", {name}" is dropped.
 const INTRO_GREETINGS = [
- "Welcome back, YOUR_NAME",
-  "Hello, YOUR_NAME",
+ "Welcome back, {name}",
+  "Hello, {name}",
   "Ecstatic to see you!",
   "Ready when you are.",
   "Hey there, stranger.",
@@ -1089,7 +1125,7 @@ const INTRO_GREETINGS = [
   "SPAAACE!",
   "Fantasizing over anime girls now, heh?",
   "Welcome home.",
-  "Hello again, YOUR_NICKNAME",
+  "Hello again, {name}",
   "Lucid Dreaming~...",
   "Quiet, isn't it?",
   "Take your time.",
@@ -1111,11 +1147,13 @@ function CinematicHome({ data }) {
     }
     return window.__adminIntroGreeting;
   }, []);
+  const name = (data && data.handle && typeof data.handle.name === "string") ? data.handle.name.trim() : "";
+  const title = name ? greeting.replace("{name}", name) : greeting.replace(/,?\s*\{name\}/, "");
   return (
     <div className="cinematic-intro">
       <div className="intro-glow" aria-hidden="true" />
       <div className="intro-content">
-        <h1 className="intro-title">{greeting}</h1>
+        <h1 className="intro-title">{title}</h1>
         <p className="intro-sub">{INTRO_SUBTITLE}</p>
       </div>
     </div>
@@ -1465,7 +1503,7 @@ function ContentEditor({ data, reload }) {
     setPubBusy(true);
     try {
       await apiUpdate({ type: "about", text: about });
-      if (handle.trim()) await apiUpdate({ type: "handle", name: handle.trim() });
+      await apiUpdate({ type: "handle", name: handle.trim() });   // blank = public site shows the Discord name
       const bioClean = bioLines.map((l) => (l || "").trim()).filter(Boolean);
       if (bioClean.length) await apiUpdate({ type: "bio", lines: bioClean });
       await apiUpdate({ type: "interests-bulk", interests });
@@ -1495,7 +1533,7 @@ function ContentEditor({ data, reload }) {
           <div className="fld-grid" style={{ marginBottom: 12 }}>
             <div>
               <div className="lbl">Display handle</div>
-              <input className="input" value={handle} onChange={(e) => setHandle(e.target.value)} maxLength={50} placeholder="YOUR_NAME" />
+              <input className="input" value={handle} onChange={(e) => setHandle(e.target.value)} maxLength={50} placeholder="blank = your Discord name" />
             </div>
           </div>
           <div className="lbl-row"><span className="lbl" style={{ margin: 0 }}>About me</span><span className="lbl-count">{about.length} / 1500</span></div>
@@ -1938,7 +1976,7 @@ function UIEditor({ data, reload }) {
                 color: "transparent", WebkitTextFillColor: "transparent",
                 filter: nameGlow <= 0 ? "none" : `drop-shadow(0 0 ${(nameGlow / 100 * 36).toFixed(1)}px ${name1}${Math.round((0.25 + nameGlow / 100 * 0.55) * 255).toString(16).padStart(2, "0")})`,
                 transition: "filter .2s",
-              }}>YOUR_NAME</div>
+              }}>{(data && data.handle && data.handle.name) || "Your name"}</div>
             </div>
             <div>
               <div className="sld-head"><span>Username glow</span><span className="sld-val">{nameGlow <= 0 ? "off" : nameGlow + "%"}</span></div>
@@ -3168,7 +3206,7 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
               <div className={"switch " + (adminBgVideoEnabled ? "on" : "")} onClick={() => setAdminBgVideoEnabled(!adminBgVideoEnabled)}><div className="knob" /></div>
             </div>
             <input className="input" placeholder="https://…/admin-bg.mp4" value={adminBgVideo} onChange={(e) => setAdminBgVideo(e.target.value)} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} disabled={!adminBgVideoEnabled} />
-            <div className="field-sub">admin-only — does not affect YOUR_DOMAIN (that's in Content Editor)</div>
+            <div className="field-sub">admin-only — does not affect {SITE_HOST} (that's in Content Editor)</div>
             <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 6 }}>
               <span className={"save-status " + adminBgVideoStatus.kind}>{adminBgVideoStatus.msg}</span>
               <button className="btn btn-primary btn-tiny" onClick={saveAdminBgVideo}>Save video</button>
