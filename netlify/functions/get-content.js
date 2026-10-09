@@ -7,7 +7,8 @@
 //
 // Caching: public responses are briefly CDN-cached. Any request carrying an
 // X-Admin-Key header is never cached (cacheable = !hasAdminKey) — and only a
-// VERIFIED key unlocks the admin-only fields (presets, adminTheme). The CDN
+// VERIFIED key unlocks the admin-only fields (presets, adminTheme, and the
+// admin panel's own background/hero video URLs). The CDN
 // cache key also varies on that header, so a cached public copy can never be
 // served to the admin, and an admin copy is never stored at all.
 const { getStore } = require('@netlify/blobs');
@@ -210,6 +211,9 @@ exports.handler = async (event) => {
     return null;
   })));
   if (failures === keys.length) return json(503, { ok: false, error: 'Content store unavailable — try again shortly.' });
+  // The admin edits whole sections; loading defaults in place of an unreadable
+  // blob would let the next Save overwrite real content — so fail loudly.
+  if (failures && isAdmin) return json(503, { ok: false, error: 'Some content could not be loaded — try again shortly.' });
   const b = {};
   keys.forEach((k, i) => { b[k] = values[i]; });
 
@@ -232,7 +236,7 @@ exports.handler = async (event) => {
     about: { ...DEFAULT_ABOUT, ...obj(b.about) },
     theme: { ...DEFAULT_THEME, ...obj(b.theme) },
     customBadges: Array.isArray(obj(b['custom-badges']).badges) ? obj(b['custom-badges']).badges : DEFAULT_CUSTOM_BADGES,
-    videoBg: { ...DEFAULT_VIDEO_BG, ...obj(b['video-bg']) },
+    videoBg: { url: typeof obj(b['video-bg']).url === 'string' ? obj(b['video-bg']).url : DEFAULT_VIDEO_BG.url },
     discordBanner: { ...DEFAULT_DISCORD_BANNER, ...obj(b['discord-banner']) },
     favoriteGame: { ...DEFAULT_FAVORITE_GAME, ...obj(b['favorite-game']) },
     sections: normalizeSections(obj(b.sections).sections || DEFAULT_SECTIONS),
@@ -246,16 +250,20 @@ exports.handler = async (event) => {
   };
 
   if (isAdmin) {
+    data.videoBg = { ...DEFAULT_VIDEO_BG, ...obj(b['video-bg']) };   // + the admin-panel-only video URLs
     data.presets = Array.isArray(obj(b.presets).presets) ? obj(b.presets).presets : [];
     data.adminTheme = { ...DEFAULT_ADMIN_THEME, ...obj(b['admin-theme']) };
   }
 
-  const headers = cacheable
+  // A response built with any fallback (some blob unreadable) is never cached.
+  const headers = cacheable && !failures
     ? {
-        // Browsers always revalidate; Netlify's CDN may serve it for a few
-        // seconds. Netlify-Vary keys the CDN cache on the admin-key header.
+        // Browsers always revalidate; Netlify's CDN serves it for a few seconds.
+        // `durable` shares one cached copy across every edge node, so however
+        // many visitors arrive, the blobs are read at most every ~5 s.
+        // Netlify-Vary keys the CDN cache on the admin-key header.
         'Cache-Control': 'public, max-age=0, must-revalidate',
-        'Netlify-CDN-Cache-Control': 'public, s-maxage=5, stale-while-revalidate=10',
+        'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=5, stale-while-revalidate=10',
         'Netlify-Vary': 'header=x-admin-key',
       }
     : {

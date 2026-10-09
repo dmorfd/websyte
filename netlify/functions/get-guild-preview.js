@@ -5,6 +5,9 @@
 // description and creation date. Uses the bot token (DISCORD_BOT_TOKEN) for
 // the guild preview endpoint, falling back to the public widget JSON when the
 // preview isn't available. CDN-cached per guildId for ten minutes.
+// The bot token is only ever spent on the OWNER's own guild — the one shown in
+// their Discord guild tag (primary_guild of DISCORD_USER_ID) — so the endpoint
+// can't be used to look up arbitrary servers the bot happens to be in.
 const { rateLimit, tooManyRequests } = require('./lib/rate-limit');
 
 const USER_AGENT = 'DiscordBot (https://YOUR_DOMAIN, 1.0)';
@@ -35,6 +38,17 @@ async function discordGet(url, auth) {
   }
 }
 
+// The owner's current guild-tag server, cached briefly per warm lambda.
+let ownerGuild = { id: '', at: 0 };
+async function ownerGuildId(token, userId) {
+  if (ownerGuild.at && Date.now() - ownerGuild.at < 5 * 60 * 1000) return ownerGuild.id;
+  const user = await discordGet(`https://discord.com/api/v10/users/${userId}`, token);
+  if (!user) throw new Error('could not read the owner profile');
+  const pg = user.primary_guild || user.clan || null;
+  ownerGuild = { id: pg && pg.identity_guild_id ? String(pg.identity_guild_id) : '', at: Date.now() };
+  return ownerGuild.id;
+}
+
 // "Mar 2021" from the snowflake's embedded timestamp.
 function establishedFrom(id) {
   const ms = Number((BigInt(id) >> 22n) + DISCORD_EPOCH);
@@ -51,8 +65,17 @@ exports.handler = async (event) => {
   if (!limit.ok) return tooManyRequests(limit);
 
   const token = process.env.DISCORD_BOT_TOKEN;
+  const userId = String(process.env.DISCORD_USER_ID || '').trim();
   try {
-    const preview = token ? await discordGet(`https://discord.com/api/v10/guilds/${guildId}/preview`, token) : null;
+    // With a bot configured, only the owner's own guild is ever looked up.
+    let useBot = false;
+    if (token && /^\d{5,25}$/.test(userId)) {
+      if (await ownerGuildId(token, userId) !== guildId) {
+        return json(404, { ok: false, reason: 'not-owner-guild' }, { 'Netlify-CDN-Cache-Control': 'public, s-maxage=600', 'Netlify-Vary': 'query=guildId' });
+      }
+      useBot = true;
+    }
+    const preview = useBot ? await discordGet(`https://discord.com/api/v10/guilds/${guildId}/preview`, token) : null;
     if (preview && preview.name) {
       const icon = preview.icon || '';
       const splash = preview.discovery_splash
@@ -87,7 +110,7 @@ exports.handler = async (event) => {
         description: '',
       }, CACHED);
     }
-    return json(404, { ok: false, reason: token ? 'unavailable' : 'no-token' });
+    return json(404, { ok: false, reason: useBot ? 'unavailable' : 'no-token' });
   } catch (err) {
     console.error('[get-guild-preview] request failed —', err && err.message);
     return json(502, { ok: false, reason: 'discord-unreachable' });

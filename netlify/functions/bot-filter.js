@@ -1,12 +1,19 @@
-// Bot / crawler detection + light User-Agent classification.
+// Bot / crawler detection + light User-Agent classification, plus the two
+// other "is this a real visitor on our own page?" checks the public write
+// endpoints share:
+//   isBot()          — headless browsers, scrapers, link-preview fetchers
+//   isCrossSite()    — requests fired from some OTHER website's page
+//   gate pass cookie — proof the visitor solved the Turnstile entry gate
 //
-// Imported by increment-view, log-event and notify-visit so headless
-// browsers, scrapers and link-preview fetchers don't inflate the view counter,
-// pollute analytics, or ping Discord. parseUserAgent() supplies the
-// device / browser / OS buckets that analytics and the visit ping report.
+// Imported by increment-view, log-event, notify-visit and verify-turnstile so
+// none of that traffic inflates the view counter, pollutes analytics, or pings
+// Discord. parseUserAgent() supplies the device / browser / OS buckets that
+// analytics and the visit ping report.
 //
 // This file sits in netlify/functions/, so Netlify also deploys it as an
 // endpoint; the handler at the bottom just answers 404 so that endpoint is inert.
+
+const crypto = require('crypto');
 
 // Tokens that only appear in automated clients. Matched case-insensitively.
 const BOT_PATTERN = new RegExp([
@@ -86,7 +93,73 @@ function parseUserAgent(ua) {
   return { device, browser, os };
 }
 
+// True when a browser tells us the request came from another site's page.
+// Our own fetch()/sendBeacon calls are same-origin; a third-party page that
+// fires no-cors POSTs at these endpoints is not. Requests without either
+// header (non-browser clients) fall through to the bot filter instead.
+function isCrossSite(event) {
+  const h = (event && event.headers) || {};
+  const site = String(h['sec-fetch-site'] || '').toLowerCase();
+  if (site && site !== 'same-origin') return true;
+  const origin = h.origin;
+  if (origin === undefined || origin === '') return false;
+  try {
+    return new URL(origin).host !== String(h.host || '');
+  } catch {
+    return true;   // "null" or garbage Origin
+  }
+}
+
+// ── Turnstile gate pass ──
+// verify-turnstile issues it after Cloudflare confirms a token; the public
+// write endpoints require it while the gate is switched on. Value is
+// "<expiry>.<HMAC>", keyed off TURNSTILE_SECRET_KEY, HttpOnly + SameSite=Strict.
+const GATE_COOKIE = 'tsgate';
+const GATE_TTL_SEC = 6 * 60 * 60;
+
+function gateKey() {
+  const secret = process.env.TURNSTILE_SECRET_KEY;
+  return secret ? crypto.createHmac('sha256', secret).update('entry-gate-pass').digest() : null;
+}
+
+function gateSignature(key, exp) {
+  return crypto.createHmac('sha256', key).update(String(exp)).digest('base64url');
+}
+
+/** Set-Cookie value for a fresh pass, or null when Turnstile isn't configured. */
+function issueGatePass() {
+  const key = gateKey();
+  if (!key) return null;
+  const exp = Math.floor(Date.now() / 1000) + GATE_TTL_SEC;
+  return `${GATE_COOKIE}=${exp}.${gateSignature(key, exp)}; Max-Age=${GATE_TTL_SEC}; Path=/; HttpOnly; Secure; SameSite=Strict`;
+}
+
+/** True when the request carries a valid, unexpired gate pass. */
+function hasGatePass(event) {
+  const key = gateKey();
+  if (!key) return false;
+  const h = (event && event.headers) || {};
+  const m = new RegExp(`(?:^|;\\s*)${GATE_COOKIE}=(\\d+)\\.([A-Za-z0-9_-]+)`).exec(String(h.cookie || ''));
+  if (!m) return false;
+  const exp = Number(m[1]);
+  if (!(exp > Date.now() / 1000)) return false;
+  const want = Buffer.from(gateSignature(key, exp));
+  const got = Buffer.from(m[2]);
+  return want.length === got.length && crypto.timingSafeEqual(want, got);
+}
+
+/** True when the admin has the entry gate on and this request has no valid pass. */
+async function blockedByGate(event, contentStore) {
+  if (hasGatePass(event)) return false;
+  const features = await contentStore.get('features', { type: 'json' });
+  return !!(features && features.turnstileGate === true);
+}
+
 exports.isBot = isBot;
+exports.isCrossSite = isCrossSite;
+exports.blockedByGate = blockedByGate;
+exports.issueGatePass = issueGatePass;
+exports.hasGatePass = hasGatePass;
 exports.userAgent = userAgent;
 exports.parseUserAgent = parseUserAgent;
 exports.BROWSER_NAMES = BROWSER_NAMES;

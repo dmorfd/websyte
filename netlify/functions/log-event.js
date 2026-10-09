@@ -9,14 +9,24 @@
 //   ev/<YYYY-MM-DD>/<ms>~<type>~<country>~<device>~<browser>~<os>~<extra>~<rand>
 // so get-analytics can aggregate with list() alone (no per-event reads), and
 // concurrent writes never contend. No IP or identifier is stored.
+// Requests from other sites, bots, and (while the entry gate is on) visitors
+// without a Turnstile pass are not recorded; a click only counts for a name
+// that is one of the site's saved social links.
 const crypto = require('crypto');
 const { getStore } = require('@netlify/blobs');
-const { isBot, userAgent, parseUserAgent } = require('./bot-filter');
+const { isBot, isCrossSite, blockedByGate, userAgent, parseUserAgent } = require('./bot-filter');
 const { rateLimit, tooManyRequests } = require('./lib/rate-limit');
 const { normalizeCountry } = require('./lib/countries');
 
 const EVENT_PREFIX = 'ev/';
 const TYPES = ['view', 'click', 'session'];
+
+const contentStore = () => getStore({
+  name: 'site-content',
+  siteID: process.env.NETLIFY_SITE_ID,
+  token: process.env.NETLIFY_BLOBS_TOKEN,
+  consistency: 'strong',
+});
 
 const analyticsStore = () => getStore({
   name: 'site-analytics',
@@ -65,6 +75,7 @@ function parseEventKey(key) {
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'Method not allowed' });
+  if (isCrossSite(event)) return json(403, { ok: false, error: 'Forbidden' });
 
   let raw = event.body || '';
   if (event.isBase64Encoded) raw = Buffer.from(raw, 'base64').toString('utf8');
@@ -91,6 +102,15 @@ exports.handler = async (event) => {
   if (!limit.ok) return tooManyRequests(limit);
 
   try {
+    const content = contentStore();
+    if (await blockedByGate(event, content)) return json(200, { ok: true, recorded: false });
+    if (body.type === 'click') {
+      // Only the site's own social links can show up in "Most-clicked socials".
+      const saved = await content.get('socials', { type: 'json' });
+      const names = saved && Array.isArray(saved.socials) ? saved.socials.map((s) => s && s.name) : [];
+      if (!names.includes(unb64url(extra))) return json(200, { ok: true, recorded: false });
+    }
+
     const ts = Date.now();
     const key = eventKey(ts, body.type, countryOf(event), parseUserAgent(userAgent(event)), extra);
     await analyticsStore().set(key, '1');

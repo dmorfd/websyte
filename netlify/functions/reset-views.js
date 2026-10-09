@@ -8,7 +8,6 @@
 // Both default to true when omitted.
 const { getStore } = require('@netlify/blobs');
 const { checkAdmin, authFailure } = require('./lib/admin-auth');
-const { EVENT_PREFIX } = require('./log-event');
 const { writeIfUnchanged } = require('./lib/rate-limit');
 
 const storeOf = (name) => getStore({
@@ -35,15 +34,12 @@ async function resetCounter(store) {
   throw new Error('Could not reset the view counter (too much contention).');
 }
 
+// The site-analytics store holds nothing but event blobs (log-event writes
+// only ev/ keys), so one server-side bulk delete clears them all — no matter
+// how many there are — instead of one API request per event.
 async function clearEvents(store) {
-  const keys = [];
-  for await (const page of store.list({ prefix: EVENT_PREFIX, paginate: true })) {
-    for (const blob of page.blobs) keys.push(blob.key);
-  }
-  for (let i = 0; i < keys.length; i += 25) {
-    await Promise.all(keys.slice(i, i + 25).map((k) => store.delete(k)));
-  }
-  return keys.length;
+  const { deletedBlobs } = await store.deleteAll();
+  return deletedBlobs;
 }
 
 exports.handler = async (event) => {

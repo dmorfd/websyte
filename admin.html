@@ -722,27 +722,15 @@ function Login({ onSuccess }) {
     const k = key.trim();
     if (!k) { setErr("Enter admin key"); return; }
     setBusy(true); setErr("");
-    // Verify by attempting a benign, idempotent save (re-saves current handle).
+    // Verify with a keyed, read-only request: get-content checks the key and
+    // is never cached when one is sent, so nothing is written on login.
     // - 200 = valid key → continue
     // - 401/403 = wrong key → reject
-    // - other errors (network, server) = surface them
+    // - other errors (lockout, network, server) = surface them
     setAdminKey(k);
     try {
-      // First, fetch current data to use a real value
-      let res = await fetch("/.netlify/functions/get-content");
-      if (!res.ok) {
-        clearAdminKey();
-        setErr("server unreachable (HTTP " + res.status + ")");
-        setBusy(false);
-        return;
-      }
-      const data = await res.json();
-      const currentHandle = (data.handle && data.handle.name) || "YOUR_NAME";
-      // Attempt the save with current value (no-op)
-      const probe = await fetch("/.netlify/functions/update-content", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Admin-Key": k },
-        body: JSON.stringify({ type: "handle", name: currentHandle }),
+      const probe = await fetch("/.netlify/functions/get-content", {
+        headers: { "Cache-Control": "no-cache", "X-Admin-Key": k },
       });
       if (probe.status === 401 || probe.status === 403) {
         clearAdminKey();

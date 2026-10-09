@@ -3,19 +3,24 @@
 // Server-side check of the Cloudflare Turnstile token for the public site's
 // entry gate (Settings → Danger Zone → Cloudflare Turnstile Gate). The widget
 // passing in the browser proves nothing on its own — only Cloudflare's
-// siteverify answer, checked here with TURNSTILE_SECRET_KEY, does.
+// siteverify answer, checked here with TURNSTILE_SECRET_KEY, does. A verified
+// visitor gets a signed, HttpOnly gate-pass cookie; while the gate is on,
+// increment-view, log-event and notify-visit ignore visitors without one, so
+// switching the gate on genuinely stops scripted traffic from counting.
 const { rateLimit, tooManyRequests, clientIp } = require('./lib/rate-limit');
+const { isCrossSite, issueGatePass } = require('./bot-filter');
 
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
-const json = (statusCode, body) => ({
+const json = (statusCode, body, headers) => ({
   statusCode,
-  headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' },
+  headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store', ...headers },
   body: JSON.stringify(body),
 });
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'Method not allowed' });
+  if (isCrossSite(event)) return json(403, { ok: false, error: 'Forbidden' });
 
   let body;
   try { body = JSON.parse(event.body || '{}'); } catch { body = null; }
@@ -42,7 +47,8 @@ exports.handler = async (event) => {
     const data = await res.json().catch(() => ({}));
     const ok = data.success === true;
     if (!ok) console.warn('[verify-turnstile] rejected —', data['error-codes']);
-    return json(200, { ok, errors: Array.isArray(data['error-codes']) ? data['error-codes'] : [] });
+    const errors = Array.isArray(data['error-codes']) ? data['error-codes'] : [];
+    return json(200, { ok, errors }, ok ? { 'Set-Cookie': issueGatePass() } : undefined);
   } catch (err) {
     console.error('[verify-turnstile] siteverify unreachable —', err && err.message);
     return json(502, { ok: false, error: 'Verification service unreachable — try again.' });

@@ -2,13 +2,15 @@
 //
 // Bumps the global view counter. The public site calls it once per browser
 // (3-hour cooldown kept in localStorage) and only AFTER the enter screen is
-// clicked, so link-preview fetchers never reach it. Server-side, bots are
-// filtered by User-Agent and each IP is rate-limited; either way the reply
-// still carries the current count so the badge can render.
+// clicked, so link-preview fetchers never reach it. Server-side, requests from
+// other sites are refused, bots are filtered by User-Agent, visitors without a
+// Turnstile pass don't count while the entry gate is on, and each client is
+// rate-limited; in those cases the reply still carries the current count so
+// the badge can render.
 // The increment is a conditional write (ETag match) so concurrent visits
 // can't overwrite each other's +1.
 const { getStore } = require('@netlify/blobs');
-const { isBot } = require('./bot-filter');
+const { isBot, isCrossSite, blockedByGate } = require('./bot-filter');
 const { rateLimit, writeIfUnchanged } = require('./lib/rate-limit');
 
 const contentStore = () => getStore({
@@ -42,10 +44,13 @@ async function increment(store) {
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'Method not allowed' });
+  if (isCrossSite(event)) return json(403, { ok: false, error: 'Forbidden' });
 
   try {
     const store = contentStore();
-    if (isBot(event)) return json(200, { ok: true, count: await currentCount(store), counted: false });
+    if (isBot(event) || await blockedByGate(event, store)) {
+      return json(200, { ok: true, count: await currentCount(store), counted: false });
+    }
 
     const limit = await rateLimit(event, { bucket: 'increment-view', limit: 6, windowSec: 3600 });
     if (!limit.ok) return json(200, { ok: true, count: await currentCount(store), counted: false });

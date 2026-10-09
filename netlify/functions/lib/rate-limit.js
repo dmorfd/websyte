@@ -6,11 +6,17 @@
 // number of distinct clients. Because the state lives in Netlify Blobs (not in
 // memory) it survives cold starts and is shared by concurrent lambdas.
 // Increments use conditional writes (ETag match) so two simultaneous requests
-// can't both read "4 of 5" and both get through.
+// can't both read "4 of 5" and both get through; a request that keeps losing
+// that race is refused rather than waved through.
 //
-// Store errors FAIL OPEN: a Blobs hiccup must never take the public site down,
+// Clients are keyed by IPv4 address, or by IPv6 /64 — one subscriber line or
+// server usually owns a whole /64, so per-address limits would be trivial to
+// dodge by rotating addresses.
+//
+// Store ERRORS fail open: a Blobs outage must never take the public site down,
 // so the request is allowed and the error is logged.
 const crypto = require('crypto');
+const net = require('net');
 const { getStore } = require('@netlify/blobs');
 
 const guardStore = () => getStore({
@@ -29,6 +35,32 @@ function clientIp(event) {
   return String(raw).trim() || 'unknown';
 }
 
+// Full 8-hextet form of an IPv6 address (handles "::" and an IPv4 tail).
+function expandIPv6(ip) {
+  let addr = ip.split('%')[0];
+  const v4 = /(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(addr);
+  if (v4) {
+    const p = v4.slice(1).map(Number);
+    addr = addr.slice(0, -v4[0].length) + ((p[0] << 8) | p[1]).toString(16) + ':' + ((p[2] << 8) | p[3]).toString(16);
+  }
+  const [head, tail] = addr.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail === undefined ? [] : (tail ? tail.split(':') : []);
+  const fill = tail === undefined ? 0 : Math.max(0, 8 - h.length - t.length);
+  return [...h, ...new Array(fill).fill('0'), ...t].map((x) => x.padStart(4, '0').toLowerCase()).join(':');
+}
+
+// The identity limits are keyed on: IPv4 address, or IPv6 /64 prefix.
+function clientKey(event) {
+  const ip = clientIp(event);
+  if (net.isIPv6(ip)) {
+    const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+    if (mapped) return mapped[1];
+    return expandIPv6(ip).split(':').slice(0, 4).join(':') + '::/64';
+  }
+  return ip;
+}
+
 // Conditional write for read-modify-write updates: create-only when the blob
 // didn't exist, ETag-matched when the read returned an ETag, and a plain write
 // when the backend gave no ETag (nothing to condition on).
@@ -38,27 +70,33 @@ function writeIfUnchanged(store, key, cur, value) {
   return store.setJSON(key, value);
 }
 
-// IPs are never stored in clear — only a truncated SHA-256 of them.
+// Client identities are never stored in clear — only a truncated SHA-256.
 function hashKey(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 32);
 }
 
 /**
  * Count one request against a limit.
- * @param {object} event   the Netlify function event (used for the client IP)
- * @param {object} opts    { bucket, limit, windowSec, key? } — key overrides the IP
+ * @param {object} event   the Netlify function event (used for the client identity)
+ * @param {object} opts    { bucket, limit, windowSec, key? } — key overrides the client identity
  * @returns {Promise<{ok: boolean, remaining: number|null, retryAfter?: number}>}
  */
 async function rateLimit(event, { bucket, limit, windowSec, key }) {
-  const id = hashKey(key || clientIp(event));
+  const id = hashKey(key || clientKey(event));
   const blobKey = `rl/${bucket}/${id}`;
   const windowMs = windowSec * 1000;
   const now = Date.now();
   const windowStart = Math.floor(now / windowMs) * windowMs;
   const retryAfter = Math.max(1, Math.ceil((windowStart + windowMs - now) / 1000));
 
+  let store;
   try {
-    const store = guardStore();
+    store = guardStore();
+  } catch (err) {
+    console.error(`[rate-limit] ${bucket}: store unavailable, failing open —`, err && err.message);
+    return { ok: true, remaining: null };
+  }
+  try {
     for (let attempt = 0; attempt < 4; attempt++) {
       const cur = await store.getWithMetadata(blobKey, { type: 'json' });
       const data = cur && cur.data && typeof cur.data === 'object' ? cur.data : null;
@@ -69,8 +107,9 @@ async function rateLimit(event, { bucket, limit, windowSec, key }) {
       if (res.modified) return { ok: true, remaining: limit - next.count };
       // Lost a race with a concurrent request — re-read and try again.
     }
-    // Sustained contention on one key: let it through rather than stall.
-    return { ok: true, remaining: 0 };
+    // Still losing after 4 rounds = a burst on one key. Refuse: a burst is
+    // exactly what the limit exists to stop.
+    return { ok: false, remaining: 0, retryAfter: 1 };
   } catch (err) {
     console.error(`[rate-limit] ${bucket}: store error, failing open —`, err && err.message);
     return { ok: true, remaining: null };
@@ -90,4 +129,4 @@ function tooManyRequests(result) {
   };
 }
 
-module.exports = { rateLimit, tooManyRequests, clientIp, hashKey, writeIfUnchanged };
+module.exports = { rateLimit, tooManyRequests, clientIp, clientKey, hashKey, writeIfUnchanged };

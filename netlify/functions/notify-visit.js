@@ -2,15 +2,25 @@
 //
 // Pings a Discord channel (DISCORD_WEBHOOK_URL) when a real visitor enters the
 // site. Device-level only — country, device, browser and OS; never the IP.
-// The public site skips it for the owner's own devices (/?owner), bots are
-// dropped here, and each IP pings at most once per 30 minutes (plus a global
-// cap) so the channel can't be flooded.
-const { isBot, userAgent, parseUserAgent, BROWSER_NAMES, OS_NAMES, DEVICE_NAMES } = require('./bot-filter');
+// The public site skips it for the owner's own devices (/?owner). Here,
+// requests from other sites, bots and (while the entry gate is on) visitors
+// without a Turnstile pass are dropped, and each client pings at most once per
+// 30 minutes (plus a global cap) so the channel can't be flooded.
+const { getStore } = require('@netlify/blobs');
+const { isBot, isCrossSite, blockedByGate, userAgent, parseUserAgent, BROWSER_NAMES, OS_NAMES, DEVICE_NAMES } = require('./bot-filter');
 const { rateLimit } = require('./lib/rate-limit');
 const { countryName, countryFlag } = require('./lib/countries');
 const { countryOf } = require('./log-event');
 
 const USER_AGENT = 'DiscordBot (https://YOUR_DOMAIN, 1.0)';
+
+const contentStore = () => getStore({
+  name: 'site-content',
+  siteID: process.env.NETLIFY_SITE_ID,
+  token: process.env.NETLIFY_BLOBS_TOKEN,
+  consistency: 'strong',
+});
+
 const WEBHOOK_RE = /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api\/(?:v\d+\/)?webhooks\/\d+\/[\w-]+$/;
 
 const json = (statusCode, body) => ({
@@ -21,7 +31,14 @@ const json = (statusCode, body) => ({
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'Method not allowed' });
+  if (isCrossSite(event)) return json(403, { ok: false, error: 'Forbidden' });
   if (isBot(event)) return json(200, { ok: true, sent: false, reason: 'bot' });
+  try {
+    if (await blockedByGate(event, contentStore())) return json(200, { ok: true, sent: false, reason: 'gate' });
+  } catch (err) {
+    console.error('[notify-visit] gate check failed —', err && err.message);
+    return json(200, { ok: true, sent: false, reason: 'unavailable' });
+  }
 
   const webhook = String(process.env.DISCORD_WEBHOOK_URL || '').trim();
   if (!webhook) return json(200, { ok: true, sent: false, reason: 'no-webhook' });
