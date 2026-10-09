@@ -1,0 +1,14 @@
+# Dependencies (Netlify runs `npm install` on every deploy)
+node_modules/
+
+# Netlify CLI local state
+.netlify/
+
+# Local secrets
+.env
+.env.*
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log
