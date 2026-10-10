@@ -243,8 +243,9 @@ Lanyard, or from the bot (`discord-banner-live`) if Lanyard doesn't carry it.
 Discord's display-name fonts aren't public, so the font itself isn't copied.
 
 **Fonts.** Admin → Settings → Public Site Features → **Site Font** sets the font
-for all the public site's text except the display handle (the enter and loading
-screens keep their own font settings). The admin's Hero Subtitle Font only
+for all the public site's text, including the display handle unless its "Also use
+on display handle" switch is off (the enter and loading screens keep their own
+font settings). The admin's Hero Subtitle Font only
 styles the line under the welcome message. Any font can be a Google Fonts name
 or a font file on R2; font files get their own internal name, so naming one
 like a built-in font is fine.

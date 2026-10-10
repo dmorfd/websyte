@@ -3150,6 +3150,7 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
   const [faviconStatus, showFaviconStatus] = useSaveStatus();
   const [siteFont, setSiteFont] = useState(f.siteFont || "");
   const [siteFontUrl, setSiteFontUrl] = useState(f.siteFontUrl || "");
+  const [siteFontHandle, setSiteFontHandle] = useState(f.siteFontHandle !== false);
   const [siteFontStatus, showSiteFontStatus] = useSaveStatus();
   const [featStatus, showFeatStatus] = useSaveStatus();
   const [adminBgVideoStatus, showAdminBgVideoStatus] = useSaveStatus();
@@ -3200,7 +3201,7 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
     if (url && !/^https?:\/\//i.test(url)) { showSiteFontStatus("font URL must be a full https:// link", "err"); return; }
     if (url && !name) { showSiteFontStatus("give the font a name too", "err"); return; }
     try {
-      await apiUpdate({ type: "features", siteFont: name, siteFontUrl: url });
+      await apiUpdate({ type: "features", siteFont: name, siteFontUrl: url, siteFontHandle });
       if (typeof reload === "function") reload();
       showSiteFontStatus("saved ✓");
     } catch (e) { showSiteFontStatus(e.message, "err"); }
@@ -3364,8 +3365,15 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
 
           <div className="field" style={{ padding: 14 }}>
             <div className="field-title">Site Font</div>
-            <div className="field-sub" style={{ marginBottom: 8 }}>the font for all the text on the site except your display handle (the enter / loading screens keep their own font settings). Blank = the original fonts</div>
+            <div className="field-sub" style={{ marginBottom: 8 }}>the font for all the text on the site (the enter / loading screens keep their own font settings). Blank = the original fonts</div>
             <FontPicker name={siteFont} url={siteFontUrl} onName={setSiteFont} onUrl={setSiteFontUrl} />
+            <div className="field-row" style={{ marginTop: 10 }}>
+              <div>
+                <div className="field-title" style={{ fontSize: 12.5 }}>Also use on display handle</div>
+                <div className="field-sub">off = your name keeps its original font</div>
+              </div>
+              <div className={"switch " + (siteFontHandle ? "on" : "")} role="switch" aria-checked={siteFontHandle} aria-label="Use the site font on the display handle" onClick={() => setSiteFontHandle(!siteFontHandle)}><div className="knob" /></div>
+            </div>
             <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line-2)", fontFamily: fontStack(siteFont, siteFontUrl, "'Noto Serif JP', serif"), fontSize: 14 }}>
               The quick brown fox jumps over the lazy dog · 0123456789
             </div>

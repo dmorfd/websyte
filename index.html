@@ -151,6 +151,10 @@
     html.site-font body *:not(#handleName):not(#enterScreen *):not(#loaderScreen *){
       font-family:var(--site-font),'Noto Serif JP',sans-serif !important;
     }
+    /* …and the display handle too, unless that's switched off in the admin. */
+    html.site-font.site-font-handle #handleName{
+      font-family:var(--site-font),'Noto Serif JP',serif !important;
+    }
     html[data-intro="modern"] #enterScreen{display:none !important;}
     html[data-intro="modern"] #loaderScreen{display:block !important;}
     html[data-intro="classic"] #loaderScreen{display:none !important;}
@@ -2266,6 +2270,8 @@ async function loadContent() {
     if (data.features && typeof data.features === 'object') {
       applyFeatureToggles(data.features);
       if (window.__applySiteFont) window.__applySiteFont(data.features.siteFont, data.features.siteFontUrl);
+      document.documentElement.classList.toggle('site-font-handle', data.features.siteFontHandle !== false);
+      if (typeof fitHeroName === 'function') fitHeroName();   // the handle's width may have changed
     }
 
     // ══ SOCIALS ══

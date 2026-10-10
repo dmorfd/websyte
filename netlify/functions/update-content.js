@@ -221,6 +221,7 @@ const FEATURES_SPEC = {
   // Font for all public-site text except the display handle.
   siteFont: (v) => fontName(v, 'Site font'),
   siteFontUrl: (v) => url(v, 'Site font URL'),
+  siteFontHandle: (v) => bool(v, 'Site font on the display handle'),
 };
 
 const ADMIN_THEME_SPEC = {
