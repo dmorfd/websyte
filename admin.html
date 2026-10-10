@@ -661,6 +661,40 @@ function safeHex(s, fallback) { return isHex(s) ? s : fallback; }
 // Google Fonts `family=` (no weight spec) is valid for every family, including
 // single-weight ones, so any name the user types just works.
 const HEAD_FONTS = /^(Instrument Serif|Geist|JetBrains Mono)$/i;
+// Fonts loaded from a URL (e.g. R2) get a family name of their own, derived
+// from the URL, so a file named like a built-in font ("Instrument Serif",
+// "Geist") can't be shadowed by it. Loads are shared and report success.
+const urlFontFamily = (url) => {
+  let h = 5381;
+  for (let i = 0; i < url.length; i++) h = ((h * 33) ^ url.charCodeAt(i)) >>> 0;
+  return "UrlFont" + h.toString(36);
+};
+const isFontUrl = (url) => /^https?:\/\//i.test((url || "").trim());
+const __fontLoads = {};
+function loadUrlFont(url) {
+  url = (url || "").trim();
+  if (!isFontUrl(url) || !window.FontFace) return Promise.resolve("none");
+  if (!__fontLoads[url]) {
+    __fontLoads[url] = new FontFace(urlFontFamily(url), `url(${JSON.stringify(url)})`).load()
+      .then((f) => { document.fonts.add(f); return "ok"; })
+      .catch((err) => {
+        console.warn(`[admin font] couldn't load ${url} — ${(err && err.message) || err}. Most common cause: the R2 bucket's CORS policy doesn't allow this site.`);
+        delete __fontLoads[url];
+        return "error";
+      });
+  }
+  return __fontLoads[url];
+}
+// CSS font-family list for a name + optional URL: the file first, then the name.
+const fontStack = (name, url, fallback) => {
+  const parts = [];
+  if (isFontUrl(url)) parts.push(`'${urlFontFamily(url.trim())}'`);
+  const n = (name || "").trim().replace(/['"\\;{}()<>]/g, "");
+  if (n) parts.push(`'${n}'`);
+  parts.push(fallback);
+  return parts.join(", ");
+};
+
 function ensureAdminFont(name) {
   if (typeof name !== "string") return;
   name = name.trim();
@@ -679,6 +713,15 @@ function ensureAdminFont(name) {
 // debounced before we try to fetch it, so we don't hit Google once per
 // keystroke while it's half-typed.
 function FontPicker({ name, url, onName, onUrl, hint }) {
+  const [fileState, setFileState] = useState("");
+  useEffect(() => {
+    const u = (url || "").trim();
+    if (!isFontUrl(u)) { setFileState(""); return; }
+    let cancelled = false;
+    setFileState("loading");
+    const t = setTimeout(() => loadUrlFont(u).then((s) => { if (!cancelled) setFileState(s); }), 500);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [url]);
   useEffect(() => {
     const n = (name || "").trim();
     if (n.length < 3 || url) return;            // too short to be real, or self-hosted
@@ -689,6 +732,14 @@ function FontPicker({ name, url, onName, onUrl, hint }) {
     <div className="ctl-stack">
       <input className="input" value={name} onChange={(e) => onName(e.target.value)} placeholder="font family name — e.g. Orbitron" maxLength={60} />
       <input className="input" value={url} onChange={(e) => onUrl(e.target.value)} placeholder="https://…/font.woff2 (optional)" maxLength={500} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
+      {fileState === "loading" ? <div className="field-sub">checking the font file…</div> : null}
+      {fileState === "ok" ? <div className="field-sub" style={{ color: "#5fd38d" }}>✓ font file loaded</div> : null}
+      {fileState === "error" ? (
+        <div className="field-sub" style={{ color: "#ff7a7a" }}>
+          ✗ couldn't load this font file. Check the link opens in a new tab, and that the R2 bucket allows this site:
+          Cloudflare → R2 → your bucket → Settings → CORS policy (allow GET from this domain).
+        </div>
+      ) : null}
       <div className="field-sub">a Google Fonts family name works on its own; add a URL to self-host (.woff2/.woff/.otf/.ttf)</div>
       {hint ? <div className="field-sub">{hint}</div> : null}
     </div>
@@ -1480,6 +1531,7 @@ function ContentEditor({ data, reload }) {
   const [siteVideo, setSiteVideo] = useState(data.videoBg?.url || "");
   const [favGame, setFavGame] = useState(data.favoriteGame || { name: "", coverUrl: "", blurb: "", url: "" });
   const [socials, setSocials] = useState(Array.isArray(data.socials) ? data.socials : []);
+  const [games, setGames] = useState(Array.isArray(data.games) ? data.games : []);
   const [typeSpeed, setTypeSpeed] = useState(data.theme?.typeSpeed ?? 55);
   const [delSpeed, setDelSpeed] = useState(data.theme?.deleteSpeed ?? 30);
   const [holdMs, setHoldMs] = useState(data.theme?.holdTime ?? 4500);
@@ -1500,6 +1552,7 @@ function ContentEditor({ data, reload }) {
     setSiteVideo(data.videoBg?.url || "");
     setFavGame(data.favoriteGame || { name: "", coverUrl: "", blurb: "", url: "" });
     setSocials(Array.isArray(data.socials) ? data.socials : []);
+    setGames(Array.isArray(data.games) ? data.games : []);
     setTypeSpeed(data.theme?.typeSpeed ?? 55);
     setDelSpeed(data.theme?.deleteSpeed ?? 30);
     setHoldMs(data.theme?.holdTime ?? 4500);
@@ -1535,8 +1588,12 @@ function ContentEditor({ data, reload }) {
       await apiUpdate({ type: "youtube", url: youtube });
       await apiUpdate({ type: "video-bg", url: siteVideo });
       await apiUpdate({ type: "favorite-game", name: favGame.name || "", coverUrl: favGame.coverUrl || "", blurb: favGame.blurb || "", url: favGame.url || "" });
-      const cleanSoc = socials.map((s) => ({ name: (s.name || "").trim(), description: (s.description || "").trim(), iconUrl: (s.iconUrl || "").trim(), linkUrl: (s.linkUrl || "").trim() })).filter((s) => s.name && s.linkUrl);
+      const cleanSoc = socials.map((s) => ({ name: (s.name || "").trim(), description: (s.description || "").trim(), iconUrl: (s.iconUrl || "").trim(), linkUrl: (s.linkUrl || "").trim(), showIcon: s.showIcon !== false })).filter((s) => s.name && s.linkUrl);
       await apiUpdate({ type: "socials", socials: cleanSoc });
+      const cleanGames = games.map((g) => ({ title: (g.title || "").trim(), imageUrl: (g.imageUrl || "").trim(), url: (g.url || "").trim() })).filter((g) => g.title || g.imageUrl || g.url);
+      const half = cleanGames.findIndex((g) => !g.title || !g.imageUrl);
+      if (half >= 0) throw new Error(`Game ${half + 1} needs both a title and an image URL`);
+      await apiUpdate({ type: "games", games: cleanGames });
       showPub("published ✓"); afterSave();
     } catch (e) { showPub(e.message, "err"); }
     setPubBusy(false);
@@ -1708,12 +1765,48 @@ function ContentEditor({ data, reload }) {
                 <span className="rep-grip">⠿</span>
                 <input className="input" style={{ flex: "1 1 110px", minWidth: 100 }} placeholder="name" value={s.name || ""} onChange={(e) => setSocials(socials.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))} />
                 <input className="input" style={{ flex: "1.6 1 150px", minWidth: 130, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} placeholder="https://profile-url" value={s.linkUrl || ""} onChange={(e) => setSocials(socials.map((x, idx) => idx === i ? { ...x, linkUrl: e.target.value } : x))} />
-                <input className="input" style={{ flex: "1.2 1 130px", minWidth: 120, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} placeholder="https://icon-url" value={s.iconUrl || ""} onChange={(e) => setSocials(socials.map((x, idx) => idx === i ? { ...x, iconUrl: e.target.value } : x))} />
+                <input className="input" style={{ flex: "1.2 1 130px", minWidth: 120, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, opacity: s.showIcon === false ? 0.45 : 1 }} placeholder="https://icon-url" value={s.iconUrl || ""} onChange={(e) => setSocials(socials.map((x, idx) => idx === i ? { ...x, iconUrl: e.target.value } : x))} />
+                <label title="Show the image on the side of this link" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "rgba(253,245,236,0.6)", flex: "0 0 auto", cursor: "pointer" }}>
+                  <div className={"switch " + (s.showIcon !== false ? "on" : "")} role="switch" aria-checked={s.showIcon !== false} aria-label={"Show image for " + (s.name || "link " + (i + 1))}
+                    onClick={() => setSocials(socials.map((x, idx) => idx === i ? { ...x, showIcon: x.showIcon === false } : x))}><div className="knob" /></div>
+                  image
+                </label>
                 <button className="rep-x" onClick={() => setSocials(socials.filter((_, idx) => idx !== i))} title="remove">✕</button>
               </div>
             ))}
           </div>
-          <button className="add-row" style={{ maxWidth: 220 }} onClick={() => socials.length < 5 && setSocials([...socials, { name: "", description: "", iconUrl: "", linkUrl: "" }])} disabled={socials.length >= 5}>+ Add social link</button>
+          <button className="add-row" style={{ maxWidth: 220 }} onClick={() => socials.length < 5 && setSocials([...socials, { name: "", description: "", iconUrl: "", linkUrl: "", showIcon: true }])} disabled={socials.length >= 5}>+ Add social link</button>
+        </div>
+
+        {/* G · GAMES I LIKE */}
+        <div className="glass span-all">
+          <div className="grp-head">
+            <span className="grp-letter">G</span><span className="grp-title">Games I like</span>
+            <span className="lbl-count" style={{ marginLeft: "auto" }}>{games.length} / 6</span>
+          </div>
+          <div className="field-sub" style={{ marginBottom: 12 }}>
+            Up to six games, three per row on the site. Each needs a title (shown when visitors hover the cover) and a cover image — upload it to R2 and paste the link. Portrait art (3:4, like Discord's game covers) fits best. The link is optional; visitors get a "leave the site?" check first.
+          </div>
+          <div className="row-list">
+            {games.map((g, i) => {
+              const set = (k, v) => setGames(games.map((x, idx) => (idx === i ? { ...x, [k]: v } : x)));
+              const move = (d) => { const n = [...games]; const j = i + d; if (j < 0 || j >= n.length) return; [n[i], n[j]] = [n[j], n[i]]; setGames(n); };
+              return (
+                <div key={i} className="rep-row" style={{ flexWrap: "wrap", alignItems: "center" }}>
+                  <div style={{ width: 36, height: 48, borderRadius: 6, overflow: "hidden", flex: "0 0 auto", background: "rgba(255,255,255,0.05)", border: "1px solid var(--line-2)" }}>
+                    {(g.imageUrl || "").trim() ? <img src={g.imageUrl.trim()} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} onLoad={(e) => { e.currentTarget.style.visibility = "visible"; }} /> : null}
+                  </div>
+                  <input className="input" style={{ flex: "1 1 130px", minWidth: 110 }} placeholder="game title" maxLength={80} value={g.title || ""} onChange={(e) => set("title", e.target.value)} aria-label={"Game " + (i + 1) + " title"} />
+                  <input className="input" style={{ flex: "1.6 1 160px", minWidth: 130, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} placeholder="https://…r2.dev/cover.jpg" value={g.imageUrl || ""} onChange={(e) => set("imageUrl", e.target.value)} aria-label={"Game " + (i + 1) + " image URL"} />
+                  <input className="input" style={{ flex: "1.2 1 130px", minWidth: 120, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} placeholder="link (optional)" value={g.url || ""} onChange={(e) => set("url", e.target.value)} aria-label={"Game " + (i + 1) + " link"} />
+                  <button className="rep-x" onClick={() => move(-1)} disabled={i === 0} title="move up" aria-label={"Move game " + (i + 1) + " up"}>↑</button>
+                  <button className="rep-x" onClick={() => move(1)} disabled={i === games.length - 1} title="move down" aria-label={"Move game " + (i + 1) + " down"}>↓</button>
+                  <button className="rep-x" onClick={() => setGames(games.filter((_, idx) => idx !== i))} title="remove" aria-label={"Remove game " + (i + 1)}>✕</button>
+                </div>
+              );
+            })}
+          </div>
+          <button className="add-row" style={{ maxWidth: 220 }} onClick={() => games.length < 6 && setGames([...games, { title: "", imageUrl: "", url: "" }])} disabled={games.length >= 6}>+ Add game</button>
         </div>
 
       </div>
@@ -1730,8 +1823,8 @@ function UIEditor({ data, reload }) {
   const [favC2, setFavC2] = useState(t.favGameColor2 || "#c0392b");
   const [favGrad, setFavGrad] = useState(t.favGameGradient !== false);
   const [favAnim, setFavAnim] = useState(t.favGameAnimate !== false);
-  const SECTION_LABELS = { discord: "Discord Profile", about: "About Me", interests: "Interests", favgame: "Favorite Game", watch: "Watch", socials: "Find Me Here" };
-  const DEFAULT_SECTIONS = ["discord", "about", "interests", "favgame", "watch", "socials"].map((id) => ({ id, enabled: true }));
+  const SECTION_LABELS = { discord: "Discord Profile", about: "About Me", interests: "Interests", favgame: "Favorite Game", games: "Games I Like", watch: "Watch", socials: "Find Me Here" };
+  const DEFAULT_SECTIONS = ["discord", "about", "interests", "favgame", "games", "watch", "socials"].map((id) => ({ id, enabled: true }));
   // Drop ids for sections that no longer exist (e.g. from an older saved order).
   const knownSections = (list) => (Array.isArray(list) ? list.filter((s) => s && SECTION_LABELS[s.id]) : []);
   const [sections, setSections] = useState(knownSections(data.sections).length ? knownSections(data.sections) : DEFAULT_SECTIONS);
@@ -2678,19 +2771,6 @@ function Presets({ data, reload }) {
 }
 
 /* ═══════════════ ENTER SCREEN ═══════════════ */
-// Load a font for an admin preview: a self-hosted file via FontFace, or a
-// Google Fonts family through ensureAdminFont.
-function usePreviewFont(name, url) {
-  useEffect(() => {
-    const n = (name || "").trim(), u = (url || "").trim();
-    if (!n || !/^https?:\/\//i.test(u)) return;
-    const t = setTimeout(() => {
-      try { new FontFace(n, `url(${JSON.stringify(u)})`).load().then((f) => document.fonts.add(f)).catch(() => {}); } catch {}
-    }, 500);
-    return () => clearTimeout(t);
-  }, [name, url]);
-}
-
 function EnterScreen({ data, reload }) {
   const es = data.enterScreen || {};
   const [enabled, setEnabled] = useState(es.enabled !== false);
@@ -2701,6 +2781,7 @@ function EnterScreen({ data, reload }) {
   const [c1, setC1] = useState(safeHex(es.gradColor1, "#3c0a1e"));
   const [c2, setC2] = useState(safeHex(es.gradColor2, "#000000"));
   const [angle, setAngle] = useState(typeof es.gradAngle === "number" ? es.gradAngle : 135);
+  const [textScale, setTextScale] = useState(typeof es.textScale === "number" ? es.textScale : 100);
   const [accent, setAccent] = useState(safeHex(es.loaderAccent, "#a97bff"));
   // Cinematic loader only: the "Welcome" wordmark's typeface...
   const [ldFont, setLdFont] = useState(es.loaderFont || "");
@@ -2708,8 +2789,6 @@ function EnterScreen({ data, reload }) {
   // Classic only: the enter text's typeface (Google Fonts name, or an R2 file).
   const [textFont, setTextFont] = useState(es.font || "");
   const [textFontUrl, setTextFontUrl] = useState(es.fontUrl || "");
-  usePreviewFont(textFont, textFontUrl);
-  usePreviewFont(ldFont, ldFontUrl);
   // ...and its ambient loop.
   const [sfxOn, setSfxOn] = useState(es.sfxEnabled === true);
   const [sfxVol, setSfxVol] = useState(typeof es.sfxVolume === "number" ? es.sfxVolume : 60);
@@ -2738,6 +2817,7 @@ function EnterScreen({ data, reload }) {
     setC1(safeHex(e.gradColor1, "#3c0a1e"));
     setC2(safeHex(e.gradColor2, "#000000"));
     setAngle(typeof e.gradAngle === "number" ? e.gradAngle : 135);
+    setTextScale(typeof e.textScale === "number" ? e.textScale : 100);
     setStyle(e.style === "modern" ? "modern" : "classic");
     setAccent(safeHex(e.loaderAccent, "#a97bff"));
     setLdFont(e.loaderFont || "");
@@ -2761,7 +2841,7 @@ function EnterScreen({ data, reload }) {
     try {
       await apiUpdate({
         type: "enter-screen", enabled, style, loaderAccent: accent,
-        text: text.trim(), gradColor1: c1, gradColor2: c2, gradAngle: angle,
+        text: text.trim(), gradColor1: c1, gradColor2: c2, gradAngle: angle, textScale,
         loaderFont: ldFont.trim(), loaderFontUrl: ldFontUrl.trim(),
         font: textFont.trim(), fontUrl: textFontUrl.trim(),
         sfxEnabled: sfxOn, sfxVolume: sfxVol,
@@ -2780,6 +2860,7 @@ function EnterScreen({ data, reload }) {
     setC1(safeHex(e.gradColor1, "#3c0a1e"));
     setC2(safeHex(e.gradColor2, "#000000"));
     setAngle(typeof e.gradAngle === "number" ? e.gradAngle : 135);
+    setTextScale(typeof e.textScale === "number" ? e.textScale : 100);
     setStyle(e.style === "modern" ? "modern" : "classic");
     setAccent(safeHex(e.loaderAccent, "#a97bff"));
     setLdFont(e.loaderFont || "");
@@ -2875,6 +2956,10 @@ function EnterScreen({ data, reload }) {
                 <input className="input" value={c2} onChange={(e) => setC2(e.target.value)} maxLength={7} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
               </div>
               <div>
+                <div className="sld-head"><span>Text size</span><span className="sld-val">{textScale}%</span></div>
+                <input className="slider" type="range" min="50" max="250" step="5" value={textScale} onChange={(e) => setTextScale(+e.target.value)} aria-label="Enter text size" />
+              </div>
+              <div>
                 <div className="sld-head"><span>Gradient angle</span><span className="sld-val">{angle}°</span></div>
                 <input className="slider" type="range" min="0" max="360" step="5" value={angle} onChange={(e) => setAngle(+e.target.value)} />
               </div>
@@ -2939,7 +3024,7 @@ function EnterScreen({ data, reload }) {
                   ));
                 })()}
                 <div style={{ position: "relative", textAlign: "center" }}>
-                  <div style={{ fontFamily: (ldFont.trim() ? `'${ldFont.trim()}', ` : "") + "'Michroma', sans-serif", fontSize: 20, letterSpacing: "0.12em", color: "#fff", textShadow: "0 0 14px rgba(255,255,255,0.35)" }}>Welcome</div>
+                  <div style={{ fontFamily: fontStack(ldFont, ldFontUrl, "'Michroma', sans-serif"), fontSize: 20, letterSpacing: "0.12em", color: "#fff", textShadow: "0 0 14px rgba(255,255,255,0.35)" }}>Welcome</div>
                 </div>
                 <div style={{ position: "absolute", left: "8%", right: "8%", bottom: 54, height: 1,
                   background: `linear-gradient(90deg, transparent, ${isHex(accent) ? accent : "#a97bff"} 20%, #fff 50%, ${isHex(accent) ? accent : "#a97bff"} 80%, transparent)`,
@@ -2952,8 +3037,8 @@ function EnterScreen({ data, reload }) {
               <>
                 <div style={{ position: "absolute", inset: 0, background: "radial-gradient(360px 200px at 50% 60%, rgba(230,74,82,0.1), transparent 65%)" }} />
                 <div style={{
-                  fontSize: 22, fontWeight: 650, letterSpacing: "0.04em", position: "relative",
-                  fontFamily: (textFont.trim() ? `'${textFont.trim()}', ` : "") + "'Noto Serif JP', serif",
+                  fontSize: Math.round(22 * textScale) / 100, fontWeight: 650, letterSpacing: "0.04em", position: "relative", textAlign: "center", padding: "0 12px", maxWidth: "100%", overflowWrap: "anywhere",
+                  fontFamily: fontStack(textFont, textFontUrl, "'Noto Serif JP', serif"),
                   backgroundImage: `linear-gradient(${angle}deg, ${c1}, ${c2})`,
                   WebkitBackgroundClip: "text", backgroundClip: "text",
                   color: "transparent", WebkitTextFillColor: "transparent",
@@ -3012,43 +3097,15 @@ function applyAdminTheme(t) {
   // loads) can show the saved gradient instead of the defaults.
   try { localStorage.setItem("admin_accent_cache", JSON.stringify({ accent: acc, accent2: acc2 })); } catch {}
 
-  // Build @font-face for any user-supplied font URLs.
-  // ALSO load via FontFace API and log success/failure so the user has
-  // visibility when something goes wrong (CORS, 404, wrong format, etc).
+  // Font files (hero / subtitle URLs) load through loadUrlFont under their own
+  // family names; FontPicker in Settings shows whether each one loaded.
   let fontFaces = "";
-  const loadFontViaApi = (name, url) => {
-    if (!window.FontFace || !name || !url) return;
-    try {
-      const face = new FontFace(name, `url(${JSON.stringify(url)})`);
-      face.load()
-        .then((loaded) => {
-          document.fonts.add(loaded);
-          console.log(`[admin font] ✓ loaded "${name}" from ${url}`);
-        })
-        .catch((err) => {
-          console.warn(`[admin font] ✗ failed to load "${name}" from ${url}`);
-          console.warn(`  reason: ${err.message || err}`);
-          console.warn(`  most common cause: R2 CORS not configured. The font file must allow cross-origin access.`);
-          console.warn(`  fix: in your Cloudflare R2 bucket → Settings → CORS Policy, add a rule allowing your admin domain (or "*").`);
-        });
-    } catch (err) {
-      console.warn(`[admin font] FontFace API error for "${name}":`, err);
-    }
-  };
-  if (t.heroFontUrl && t.heroFont) {
-    const fmt = fontFormatFromUrl(t.heroFontUrl);
-    fontFaces += `@font-face{font-family:'${t.heroFont}';src:url('${t.heroFontUrl}')${fmt ? ` format('${fmt}')` : ""};font-display:swap;}`;
-    loadFontViaApi(t.heroFont, t.heroFontUrl);
-  }
+  if (isFontUrl(t.heroFontUrl)) loadUrlFont(t.heroFontUrl);
   // No URL means it's a Google Fonts family name — inject the <link> or the
   // title just falls back to whatever the <head> stylesheet already loaded.
   if (!t.heroFontUrl) ensureAdminFont(t.heroFont);
   if (!t.subFontUrl) ensureAdminFont(t.subFont);
-  if (t.subFontUrl && t.subFont) {
-    const fmt = fontFormatFromUrl(t.subFontUrl);
-    fontFaces += `@font-face{font-family:'${t.subFont}';src:url('${t.subFontUrl}')${fmt ? ` format('${fmt}')` : ""};font-display:swap;}`;
-    loadFontViaApi(t.subFont, t.subFontUrl);
-  }
+  if (isFontUrl(t.subFontUrl)) loadUrlFont(t.subFontUrl);
 
   let bgCss = "";
   if (isHex(t.bg)) {
@@ -3069,8 +3126,8 @@ function applyAdminTheme(t) {
     :root{
       --accent:${acc} !important;
       --accent-2:${acc2} !important;
-      --hero-font: ${JSON.stringify(t.heroFont || "Instrument Serif")};
-      --sub-font:  ${JSON.stringify(t.subFont  || "Geist")};
+      --hero-font: ${fontStack(t.heroFont || "Instrument Serif", t.heroFontUrl, "'Instrument Serif'")};
+      --sub-font:  ${fontStack(t.subFont || "Geist", t.subFontUrl, "'Geist'")};
     }
     /* nav-item active visuals are driven by base CSS (blue/black) — accent only used for icons buttons */
     .intro-title{font-family:var(--hero-font),serif !important;font-weight:400 !important;}
@@ -3091,6 +3148,9 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
   const [adminBgVideoEnabled, setAdminBgVideoEnabled] = useState(!!(v.adminUrl));
   const [favicon, setFavicon] = useState(f.faviconUrl || "");
   const [faviconStatus, showFaviconStatus] = useSaveStatus();
+  const [siteFont, setSiteFont] = useState(f.siteFont || "");
+  const [siteFontUrl, setSiteFontUrl] = useState(f.siteFontUrl || "");
+  const [siteFontStatus, showSiteFontStatus] = useSaveStatus();
   const [featStatus, showFeatStatus] = useSaveStatus();
   const [adminBgVideoStatus, showAdminBgVideoStatus] = useSaveStatus();
 
@@ -3133,6 +3193,17 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
     // heroUrl is cleared too: the admin has one background video now.
     try { await apiUpdate({ type: "video-bg", adminUrl, heroUrl: "" }); if (typeof reload === "function") reload(); showAdminBgVideoStatus("saved ✓"); }
     catch (e) { showAdminBgVideoStatus(e.message, "err"); }
+  };
+  const saveSiteFont = async () => {
+    const name = siteFont.trim(), url = siteFontUrl.trim();
+    if (name && !/^[A-Za-z0-9 \-_]+$/.test(name)) { showSiteFontStatus("font name: letters, numbers, spaces, - and _ only", "err"); return; }
+    if (url && !/^https?:\/\//i.test(url)) { showSiteFontStatus("font URL must be a full https:// link", "err"); return; }
+    if (url && !name) { showSiteFontStatus("give the font a name too", "err"); return; }
+    try {
+      await apiUpdate({ type: "features", siteFont: name, siteFontUrl: url });
+      if (typeof reload === "function") reload();
+      showSiteFontStatus("saved ✓");
+    } catch (e) { showSiteFontStatus(e.message, "err"); }
   };
   const saveFavicon = async () => {
     const url = favicon.trim();
@@ -3292,6 +3363,20 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
           </div>
 
           <div className="field" style={{ padding: 14 }}>
+            <div className="field-title">Site Font</div>
+            <div className="field-sub" style={{ marginBottom: 8 }}>the font for all the text on the site except your display handle (the enter / loading screens keep their own font settings). Blank = the original fonts</div>
+            <FontPicker name={siteFont} url={siteFontUrl} onName={setSiteFont} onUrl={setSiteFontUrl} />
+            <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line-2)", fontFamily: fontStack(siteFont, siteFontUrl, "'Noto Serif JP', serif"), fontSize: 14 }}>
+              The quick brown fox jumps over the lazy dog · 0123456789
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 6 }}>
+              <span className={"save-status " + siteFontStatus.kind}>{siteFontStatus.msg}</span>
+              <button className="btn btn-tiny" onClick={() => { setSiteFont(""); setSiteFontUrl(""); }}>Clear</button>
+              <button className="btn btn-primary btn-tiny" onClick={saveSiteFont}>Save site font</button>
+            </div>
+          </div>
+
+          <div className="field" style={{ padding: 14 }}>
             <div className="field-row">
               <div>
                 <div className="field-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><Ico.video /> Background Video</div>
@@ -3355,15 +3440,17 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
             <div className="field-title" style={{ textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: ".16em" }}>Hero Title Font</div>
             <FontPicker name={heroFont} url={heroFontUrl} onName={setHeroFont} onUrl={setHeroFontUrl} />
             <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line-2)" }}>
-              <div style={{ fontFamily: (heroFont || "").trim() ? `'${heroFont.trim()}', serif` : "'Instrument Serif', serif", fontWeight: 700, fontSize: 26, lineHeight: 1.1 }}>Admin Panel</div>
+              <div style={{ fontFamily: fontStack(heroFont, heroFontUrl, "'Instrument Serif', serif"), fontWeight: 700, fontSize: 26, lineHeight: 1.1 }}>Admin Panel</div>
             </div>
             <div className="field-sub">Leave blank for the default, Instrument Serif.</div>
           </div>
 
           <div className="field">
-            <div className="field-title" style={{ textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: ".16em" }}>Hero Subtitle Font</div>
-            <input className="input" value={subFont} onChange={(e) => setSubFont(e.target.value)} placeholder="font family name" />
-            <input className="input" value={subFontUrl} onChange={(e) => setSubFontUrl(e.target.value)} placeholder="https://…/font.woff2 (optional)" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
+            <div className="field-title" style={{ textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: ".16em" }}>Hero Subtitle Font <span className="field-sub" style={{ marginLeft: 6, textTransform: "none", letterSpacing: 0 }}>(the line under the welcome message)</span></div>
+            <FontPicker name={subFont} url={subFontUrl} onName={setSubFont} onUrl={setSubFontUrl} />
+            <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line-2)" }}>
+              <div style={{ fontFamily: fontStack(subFont, subFontUrl, "'Geist', sans-serif"), fontSize: 14 }}>☆ subtitle preview ☆</div>
+            </div>
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center" }}>

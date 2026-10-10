@@ -200,6 +200,7 @@ const ENTER_SCREEN_SPEC = {
   gradColor1: (v) => hex(v, 'Gradient color 1'),
   gradColor2: (v) => hex(v, 'Gradient color 2'),
   gradAngle: (v) => num(v, 'Gradient angle', 0, 360),
+  textScale: (v) => num(v, 'Enter text size', 50, 250, { integer: true }),   // % of the default size
   font: (v) => fontName(v, 'Enter text font'),
   // A full http(s) URL to the font file (e.g. on R2) — loaded by @font-face.
   fontUrl: (v) => url(v, 'Enter text font URL'),
@@ -217,6 +218,9 @@ const FEATURES_SPEC = {
   showViews: (v) => bool(v, 'Profile Views'),
   turnstileGate: (v) => bool(v, 'Cloudflare Turnstile Gate'),
   faviconUrl: (v) => url(v, 'Favicon URL', { relative: true }),
+  // Font for all public-site text except the display handle.
+  siteFont: (v) => fontName(v, 'Site font'),
+  siteFontUrl: (v) => url(v, 'Site font URL'),
 };
 
 const ADMIN_THEME_SPEC = {
@@ -287,6 +291,23 @@ const HANDLERS = {
   'enter-screen': {
     blob: 'enter-screen',
     build: (body, cur) => { const r = applySpec(body, ENTER_SCREEN_SPEC, cur); requireTouched(r.touched, 'enter-screen'); return r.next; },
+  },
+  // "Games I like": up to six cover tiles, three per row on the public site.
+  games: {
+    blob: 'games',
+    build: (body) => {
+      if (!Array.isArray(body.games)) fail('Games must be a list.');
+      if (body.games.length > 6) fail('At most 6 games.');
+      const games = body.games.map((gm, i) => {
+        if (!isObj(gm)) fail(`Game ${i + 1} is invalid.`);
+        return {
+          title: text(gm.title, `Game ${i + 1} title`, 80, { required: true }),
+          imageUrl: url(gm.imageUrl, `Game ${i + 1} image URL`, { relative: true }) || fail(`Game ${i + 1} needs an image URL.`),
+          url: url(gm.url, `Game ${i + 1} link`),
+        };
+      });
+      return { games };
+    },
   },
   'favorite-game': {
     blob: 'favorite-game',
@@ -364,6 +385,7 @@ const HANDLERS = {
           description: text(s.description, `Social link ${i + 1} description`, 120),
           iconUrl: url(s.iconUrl, `Social link ${i + 1} icon URL`, { relative: true }),
           linkUrl: url(s.linkUrl, `Social link ${i + 1} profile URL`) || fail(`Social link ${i + 1} needs a profile URL.`),
+          showIcon: s.showIcon !== false,   // the image on the card's side
         };
       });
       return { socials };

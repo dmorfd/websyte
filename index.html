@@ -20,18 +20,38 @@
   <script>
     // Load the enter text's font: a Google Fonts family, or a self-hosted file
     // (e.g. on R2) via @font-face. Used here from cache and by applyEnterScreen.
+    // Site-wide font: sets --site-font and the html.site-font switch.
+    window.__applySiteFont = function (name, url) {
+      var root = document.documentElement;
+      var stack = window.__loadFontStack(name, url);
+      if (!stack) { root.classList.remove('site-font'); root.style.removeProperty('--site-font'); return; }
+      root.style.setProperty('--site-font', stack);
+      root.classList.add('site-font');
+    };
     window.__loadEnterFont = function (name, url) {
       var root = document.documentElement;
+      var stack = window.__loadFontStack(name, url);
+      if (!stack) root.style.removeProperty('--enter-font');
+      else root.style.setProperty('--enter-font', stack);
+    };
+    // Load a Google Fonts family, or a font file (e.g. on R2) via @font-face,
+    // and return the CSS font-family list to use ('' when no name).
+    window.__loadFontStack = function (name, url) {
+      var root = document.documentElement;
       name = (typeof name === 'string' ? name : '').replace(/['"\\;{}()<>]/g, '').trim();
-      if (!name) { root.style.removeProperty('--enter-font'); return; }
-      var key = 'enterfont-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      if (!name) return '';
+      // A font FILE gets a family name of its own (from its URL), so a file
+      // named like a font the page already loads can't be shadowed by it.
+      var isFile = typeof url === 'string' && /^https?:\/\//i.test(url);
+      var fam = isFile ? window.__urlFontFamily(url) : name;
+      var key = 'enterfont-' + fam.toLowerCase().replace(/[^a-z0-9]+/g, '-');
       if (!document.getElementById(key)) {
         var el;
-        if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+        if (isFile) {
           var m = /\.(woff2|woff|otf|ttf)(\?|#|$)/i.exec(url);
           var fmt = m ? ({ woff2: 'woff2', woff: 'woff', otf: 'opentype', ttf: 'truetype' })[m[1].toLowerCase()] : '';
           el = document.createElement('style');
-          el.textContent = "@font-face{font-family:'" + name + "';src:url('" + url.replace(/['\\]/g, encodeURIComponent) + "')" +
+          el.textContent = "@font-face{font-family:'" + fam + "';src:url('" + url.replace(/['\\]/g, encodeURIComponent) + "')" +
             (fmt ? " format('" + fmt + "')" : '') + ';font-display:swap;}';
         } else {
           el = document.createElement('link');
@@ -41,7 +61,12 @@
         el.id = key;
         document.head.appendChild(el);
       }
-      root.style.setProperty('--enter-font', "'" + name + "'");
+      return isFile ? "'" + fam + "','" + name + "'" : "'" + name + "'";
+    };
+    window.__urlFontFamily = function (url) {
+      var h = 5381;
+      for (var i = 0; i < url.length; i++) h = ((h * 33) ^ url.charCodeAt(i)) >>> 0;
+      return 'UrlFont' + h.toString(36);
     };
     // CRITICAL: runs BEFORE any stylesheet so the right intro is the ONLY one
     // ever painted. Stamps <html data-intro> from the choice applyEnterScreen()
@@ -62,6 +87,7 @@
         // visitor painted their OLD enter-screen colours for a frame or two
         // before the loader took over — the exact flash this guards against.
         if (__c.grad && __c.style !== 'modern') document.documentElement.style.setProperty('--enter-gradient', __c.grad);
+        if (typeof __c.textScale === 'number') document.documentElement.style.setProperty('--enter-scale', String(__c.textScale / 100));
         // Wordmark font + sound effects for the cinematic loader, so a
         // returning visitor gets the right typeface and audio from frame one
         // instead of Michroma-then-swap.
@@ -120,6 +146,11 @@
        phone. !important so it beats #loaderScreen's inline display:none.
        applyEnterScreen() re-stamps the attribute once the real settings land,
        so a changed setting still takes effect on this same load. */
+    /* Site font (Admin → Settings → Public Site Features): every piece of text
+       except the display handle and the intro screens, which have their own. */
+    html.site-font body *:not(#handleName):not(#enterScreen *):not(#loaderScreen *){
+      font-family:var(--site-font),'Noto Serif JP',sans-serif !important;
+    }
     html[data-intro="modern"] #enterScreen{display:none !important;}
     html[data-intro="modern"] #loaderScreen{display:block !important;}
     html[data-intro="classic"] #loaderScreen{display:none !important;}
@@ -515,7 +546,7 @@
     .enter-text{
       position:relative;z-index:2;
       font-family:var(--enter-font,'Noto Serif JP'),'Noto Serif JP',serif;
-      font-size:1.4rem;
+      font-size:calc(1.4rem * var(--enter-scale,1));
       letter-spacing:.18em;
       color:rgba(255,235,235,.85);
       text-align:center;
@@ -533,7 +564,7 @@
       50%{opacity:1;}
     }
     @media (max-width:560px){
-      .enter-text{font-size:1.1rem;letter-spacing:.14em;}
+      .enter-text{font-size:calc(1.1rem * var(--enter-scale,1));letter-spacing:.14em;}
     }
 
     /* ══════════════════════════════
@@ -628,7 +659,7 @@
     /* Bio text — typewriter style */
     .bio-wrap{min-height:2.6rem;display:flex;align-items:center;justify-content:center;width:100%;}
     .bio-text{
-      font-family:'Noto Serif JP',serif;font-size:.98rem;font-style:italic;
+      font-family:'Noto Serif JP',serif;font-size:1.08rem;font-style:italic;
       line-height:1.85;color:var(--text-color);text-align:center;
       min-height:1.85em;
     }
@@ -870,6 +901,95 @@
     .favgame-card:not([href]){cursor:default;}
     @media (prefers-reduced-motion: reduce){
       .favgame-cover{animation:none;}
+    }
+
+    /* ══ GAMES I LIKE ══
+       Up to six portrait cover tiles, three per row, on a glass panel. Hover
+       (or keyboard focus / a tap on touch) gives the art a faint zoom, a soft
+       gold edge and a title tooltip in the same style as the badge tooltips. */
+    .games-section{width:100%;}
+    .games-card{
+      position:relative;width:100%;padding:.85rem;
+      background:var(--glass);border:1px solid var(--glass-border);
+      backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    }
+    .games-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem;}
+    .game-slot{
+      position:relative;display:block;aspect-ratio:3 / 4;border-radius:10px;
+      outline:none;text-decoration:none;cursor:default;-webkit-tap-highlight-color:transparent;
+    }
+    a.game-slot{cursor:pointer;}
+    .game-art{
+      position:absolute;inset:0;border-radius:inherit;overflow:hidden;
+      background:linear-gradient(160deg,rgba(212,168,75,.10),rgba(192,57,43,.08));
+      border:1px solid rgba(255,235,235,.10);
+      box-shadow:0 12px 26px -14px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,238,238,.06);
+      transition:border-color .35s ease,box-shadow .35s ease;
+      transform:translateZ(0);   /* keeps the zooming art clipped to the corners in Safari */
+    }
+    .game-art img{
+      width:100%;height:100%;object-fit:cover;display:block;
+      transform:scale(1);transition:transform .6s cubic-bezier(.2,.8,.2,1);
+    }
+    /* a gentle bottom shade so bright covers sit in the dark theme */
+    .game-art::after{
+      content:'';position:absolute;inset:0;pointer-events:none;
+      background:linear-gradient(180deg,transparent 58%,rgba(8,3,5,.38) 100%);
+      transition:opacity .35s ease;
+    }
+    .game-fallback{
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      padding:.6rem;text-align:center;line-height:1.4;
+      font-family:'Noto Serif JP',serif;font-size:.78rem;color:rgba(255,235,235,.82);
+    }
+    /* title tooltip, centred above the tile (edge columns align to their edge) */
+    .game-slot::after{
+      content:attr(data-tip);
+      position:absolute;bottom:calc(100% + 9px);left:50%;
+      transform:translate(-50%,4px);
+      max-width:min(240px,80vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+      background:rgba(8,3,5,.96);color:rgba(255,235,235,.95);
+      font-family:'DM Sans',sans-serif;font-size:.72rem;font-weight:500;letter-spacing:.02em;
+      padding:.42rem .7rem;border:1px solid rgba(212,168,75,.3);border-radius:5px;
+      box-shadow:0 6px 16px rgba(0,0,0,.5);
+      pointer-events:none;opacity:0;z-index:50;
+      transition:opacity .16s ease,transform .16s ease;
+    }
+    .game-slot::before{
+      content:'';position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(-50%);
+      border-left:6px solid transparent;border-right:6px solid transparent;
+      border-top:6px solid rgba(212,168,75,.3);
+      pointer-events:none;opacity:0;z-index:50;transition:opacity .16s ease;
+    }
+    .game-slot:nth-child(3n+1)::after{left:0;transform:translate(0,4px);}
+    .game-slot:nth-child(3n)::after{left:auto;right:0;transform:translate(0,4px);}
+    .game-slot:focus-visible::after,.game-slot:focus-visible::before,
+    .game-slot.tip-on::after,.game-slot.tip-on::before{opacity:1;}
+    .game-slot:focus-visible::after,.game-slot.tip-on::after{transform:translate(-50%,0);}
+    .game-slot:nth-child(3n+1):focus-visible::after,.game-slot:nth-child(3n+1).tip-on::after,
+    .game-slot:nth-child(3n):focus-visible::after,.game-slot:nth-child(3n).tip-on::after{transform:translate(0,0);}
+    .game-slot:focus-visible .game-art{border-color:rgba(212,168,75,.6);box-shadow:0 0 0 2px rgba(212,168,75,.4);}
+    /* hover only where hover exists — on touch it would need two taps */
+    @media (hover:hover){
+      .game-slot:hover::after,.game-slot:hover::before{opacity:1;}
+      .game-slot:hover::after{transform:translate(-50%,0);}
+      .game-slot:nth-child(3n+1):hover::after,.game-slot:nth-child(3n):hover::after{transform:translate(0,0);}
+      .game-slot:hover .game-art img{transform:scale(1.06);}
+      .game-slot:hover .game-art{
+        border-color:rgba(212,168,75,.42);
+        box-shadow:0 16px 32px -14px rgba(0,0,0,.85),0 0 0 1px rgba(212,168,75,.16),0 0 20px -6px rgba(212,168,75,.3);
+      }
+      .game-slot:hover .game-art::after{opacity:.4;}
+    }
+    @media (max-width:480px){
+      .games-card{padding:.65rem;}
+      .games-grid{gap:.5rem;}
+      .game-slot{border-radius:8px;}
+      .game-slot::after{font-size:.66rem;}
+    }
+    @media (prefers-reduced-motion: reduce){
+      .game-art img,.game-slot::after{transition:none;}
+      .game-slot:hover .game-art img{transform:none;}
     }
 
     /* Scroll reveal */
@@ -1373,7 +1493,7 @@
        box-shadow cleanly takes over.
        ═══════════════════════════════════════════════════════════════ */
     .about-card,.interest-card,.dprof-card,.favgame-card,
-    .yt-card,.link-card{
+    .yt-card,.link-card,.games-card{
       border-radius:14px;
       box-shadow:
         0 14px 34px -16px rgba(0,0,0,.62),
@@ -1388,7 +1508,7 @@
     .dprof-banner{border-radius:14px 14px 0 0;}
     /* A touch warmer, more luminous edge than the flat crimson border. */
     .about-card,.interest-card,.dprof-card,
-    .yt-card,.link-card{
+    .yt-card,.link-card,.games-card{
       border-color:rgba(224,120,140,.26);
     }
     /* Give the left accent bars a soft gold-crimson bloom so the cards feel lit. */
@@ -1635,16 +1755,6 @@
 
       <h1 class="name" id="handleName"></h1>
 
-      <!-- Lanyard Discord status (requires joining discord.gg/lanyard) -->
-      <div class="status-wrap" id="statusWrap" style="opacity:0;transition:opacity .5s;">
-        <div class="status-dot offline" id="statusDot"></div>
-        <span class="status-text" id="statusText">offline</span>
-      </div>
-      <div class="status-activity-wrap" id="statusActivityWrap" style="display:none;">
-        <div class="status-activity" id="statusActivity"></div>
-        <div class="status-tooltip" id="statusTooltip"></div>
-      </div>
-
       <div class="bio-divider"></div>
       <div class="bio-wrap"><p class="bio-text" id="bioText">loading...</p></div>
 
@@ -1832,6 +1942,14 @@
         <div class="favgame-blurb" id="favGameBlurb"></div>
       </div>
     </a>
+  </div>
+
+  <!-- 3b. GAMES I LIKE — up to six cover tiles (Admin → Content Editor → G) -->
+  <div class="scroll-reveal games-section" id="gamesSection" style="display:none;transition-delay:.08s;">
+    <p class="section-label" style="margin-bottom:.75rem;">games i like</p>
+    <div class="games-card">
+      <div class="games-grid" id="gamesGrid"></div>
+    </div>
   </div>
 
   <!-- 4. WATCH -->
@@ -2139,6 +2257,7 @@ async function loadContent() {
 
     // ══ FAVORITE GAME ══
     applyFavoriteGame(data.favoriteGame);
+    applyGames(data.games);
 
     // ══ SECTION ORDER / VISIBILITY ══
     applySections(data.sections);
@@ -2146,6 +2265,7 @@ async function loadContent() {
     // ══ FEATURE TOGGLES (presence + views visibility on public site) ══
     if (data.features && typeof data.features === 'object') {
       applyFeatureToggles(data.features);
+      if (window.__applySiteFont) window.__applySiteFont(data.features.siteFont, data.features.siteFontUrl);
     }
 
     // ══ SOCIALS ══
@@ -2214,7 +2334,9 @@ function renderSocials(socials) {
     // Track this click for analytics (fire-and-forget, never blocks navigation)
     a.addEventListener('click', () => logSocialClick(s.name));
 
-    if (s.iconUrl) {
+    if (s.showIcon === false) {
+      // image switched off for this link (Admin → Content Editor → Social links)
+    } else if (s.iconUrl) {
       const img = document.createElement('img');
       img.className = 'link-icon';
       img.src = s.iconUrl;
@@ -2288,9 +2410,6 @@ function applyFeatureToggles(features) {
   const dprofSection = dprofCard ? dprofCard.closest('.scroll-reveal') : null;
   if (dprofSection) dprofSection.style.display = showPresence ? '' : 'none';
 
-  // Hero card live status (the activity wrap with status dot)
-  const statusWrap = document.querySelector('.status-activity-wrap');
-  if (statusWrap) statusWrap.style.display = showPresence ? '' : 'none';
 
   // Views: hide both hero badge AND HUD count
   const heroBadge = document.getElementById('viewBadge');
@@ -2312,6 +2431,7 @@ const SECTION_SELECTORS = {
   about:     '.about-section',
   interests: '.interests-section',
   favgame:   '.favgame-section',
+  games:     '.games-section',
   watch:     '.watch-section',
   socials:   '.links-section',
 };
@@ -2359,6 +2479,67 @@ function applyFavoriteGame(fg) {
   }
   section.style.display = '';
 }
+
+// "Games I like": up to six {title, imageUrl, url} tiles. Hidden when empty.
+// A tile with a link opens the same leave-site confirmation as the favorite
+// game card; on touch, a tap on a tile without a link shows its title.
+function applyGames(list) {
+  const section = document.getElementById('gamesSection');
+  const grid = document.getElementById('gamesGrid');
+  if (!section || !grid) return;
+  const games = (Array.isArray(list) ? list : [])
+    .filter((g) => g && typeof g.title === 'string' && g.title.trim() && typeof g.imageUrl === 'string' && g.imageUrl.trim())
+    .slice(0, 6);
+  const key = JSON.stringify(games);
+  if (grid.dataset.key === key) return;   // unchanged since the last load
+  grid.dataset.key = key;
+  grid.innerHTML = '';
+  if (!games.length) { section.style.display = 'none'; return; }
+  for (const g of games) {
+    const title = g.title.trim();
+    const link = (typeof g.url === 'string' && /^https?:\/\//i.test(g.url.trim())) ? g.url.trim() : '';
+    const slot = document.createElement(link ? 'a' : 'div');
+    slot.className = 'game-slot';
+    slot.dataset.tip = title;
+    slot.setAttribute('aria-label', title);
+    if (link) {
+      slot.href = link;
+      slot.target = '_blank';
+      slot.rel = 'noopener noreferrer';
+      slot.addEventListener('click', (e) => { e.preventDefault(); openFavGameConfirm(link); });
+    } else {
+      slot.tabIndex = 0;
+      slot.setAttribute('role', 'img');
+      slot.addEventListener('click', () => {
+        grid.querySelectorAll('.game-slot.tip-on').forEach((el) => { if (el !== slot) el.classList.remove('tip-on'); });
+        slot.classList.toggle('tip-on');
+      });
+    }
+    const art = document.createElement('span');
+    art.className = 'game-art';
+    const img = document.createElement('img');
+    img.src = g.imageUrl.trim();
+    img.alt = title;
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.onerror = () => {
+      img.remove();
+      const fb = document.createElement('span');
+      fb.className = 'game-fallback';
+      fb.textContent = title;
+      art.appendChild(fb);
+    };
+    art.appendChild(img);
+    slot.appendChild(art);
+    grid.appendChild(slot);
+  }
+  section.style.display = '';
+}
+// Tapping elsewhere hides a tapped tile's title again.
+document.addEventListener('click', (e) => {
+  if (e.target.closest && e.target.closest('.game-slot')) return;
+  document.querySelectorAll('.game-slot.tip-on').forEach((el) => el.classList.remove('tip-on'));
+});
 
 // Leave-site confirmation for the favorite-game card.
 let __favGamePendingUrl = '';
@@ -2459,6 +2640,12 @@ function setAvatarDecoration(url) {
   ['avatarDeco', 'dprofAvatarDeco'].forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
+    // A decoration that fails to load hides itself instead of showing a broken image.
+    if (!el.dataset.decoGuard) {
+      el.dataset.decoGuard = '1';
+      el.addEventListener('error', () => { el.style.visibility = 'hidden'; });
+      el.addEventListener('load', () => { el.style.visibility = ''; });
+    }
     if (url) { if (el.getAttribute('src') !== url) el.src = url; }
     else if (el.getAttribute('src')) el.removeAttribute('src');
   });
@@ -2968,7 +3155,7 @@ function applyUiVisuals(theme) {
   // Apply styles directly to elements via .style.setProperty(prop, val, 'important').
   // This bypasses the CSS specificity battle entirely — inline !important ALWAYS wins
   // over stylesheet rules, regardless of how many class selectors they chain.
-  const otherCardsList = ['interest-card','about-card','dprof-card','yt-card','link-card','soundbar-section','favgame-card'];
+  const otherCardsList = ['interest-card','about-card','dprof-card','yt-card','link-card','soundbar-section','favgame-card','games-card'];
 
   // Apply to non-hero cards
   otherCardsList.forEach(cls => {
@@ -3407,30 +3594,37 @@ function enterSiteNow(overlayEl, customExit) {
 // from Google Fonts (the bare `family=` form is valid for every family, and
 // we only ever need weight 400 here); a custom family can be self-hosted by
 // also supplying a direct font-file URL.
+// Returns the CSS font-family list to use. A font FILE gets a family name of
+// its own (from its URL) so one named like a font the page already loads
+// (e.g. "Michroma") can't be shadowed by it.
 function ensureLoaderFont(name, url) {
-  if (typeof name !== 'string') return;
-  name = name.trim();
-  if (!name) return;
+  if (typeof name !== 'string') return '';
+  name = name.trim().replace(/['"\\;{}()<>]/g, '');
+  if (!name) return '';
+  const isFile = !!url && /^https?:\/\//i.test(url);
+  const fam = isFile ? window.__urlFontFamily(url) : name;
+  const stack = isFile ? "'" + fam + "','" + name + "'" : "'" + name + "'";
   // Already in the document's main stylesheet link — nothing to fetch.
-  if (/^(Michroma|JetBrains Mono|DM Sans|Share Tech Mono|Noto Serif JP)$/i.test(name)) return;
-  const key = 'ldfont-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  if (document.getElementById(key)) return;
-  if (url && /^https?:\/\//i.test(url)) {
+  if (!isFile && /^(Michroma|JetBrains Mono|DM Sans|Share Tech Mono|Noto Serif JP)$/i.test(name)) return stack;
+  const key = 'ldfont-' + fam.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  if (document.getElementById(key)) return stack;
+  if (isFile) {
     // Self-hosted file → @font-face. Format hint is optional; browsers sniff it.
     const m = /\.(woff2|woff|otf|ttf)(\?|$)/i.exec(url);
     const fmt = m ? ({ woff2: 'woff2', woff: 'woff', otf: 'opentype', ttf: 'truetype' })[m[1].toLowerCase()] : '';
     const st = document.createElement('style');
     st.id = key;
-    st.textContent = "@font-face{font-family:'" + name.replace(/'/g, '') + "';src:url('" + url + "')" +
+    st.textContent = "@font-face{font-family:'" + fam + "';src:url('" + url.replace(/['\\]/g, encodeURIComponent) + "')" +
       (fmt ? " format('" + fmt + "')" : '') + ';font-display:swap;}';
     document.head.appendChild(st);
-    return;
+    return stack;
   }
   const link = document.createElement('link');
   link.id = key;
   link.rel = 'stylesheet';
   link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(name).replace(/%20/g, '+') + '&display=swap';
   document.head.appendChild(link);
+  return stack;
 }
 
 function setupModernLoader(es) {
@@ -3447,8 +3641,8 @@ function setupModernLoader(es) {
   // ── wordmark typeface ──
   function applyFont(name, url) {
     if (typeof name !== 'string' || !name.trim()) return;
-    ensureLoaderFont(name, url);
-    root.style.setProperty('--ld-font', "'" + name.trim().replace(/'/g, '') + "'");
+    const stack = ensureLoaderFont(name, url);
+    if (stack) root.style.setProperty('--ld-font', stack);
   }
   applyFont(es.loaderFont, es.loaderFontUrl);
   root.__ldSetFont = applyFont;   // late settings can restyle the wordmark
@@ -4150,6 +4344,9 @@ function applyEnterScreen(es) {
   const c1 = (typeof es.gradColor1 === 'string' && /^#[0-9a-fA-F]{6}$/.test(es.gradColor1)) ? es.gradColor1 : '#3c0a1e';
   const c2 = (typeof es.gradColor2 === 'string' && /^#[0-9a-fA-F]{6}$/.test(es.gradColor2)) ? es.gradColor2 : '#000000';
   const angle = (typeof es.gradAngle === 'number' && es.gradAngle >= 0 && es.gradAngle <= 360) ? es.gradAngle : 135;
+  // Enter text size (Admin → Enter Screen → Text size), % of the default.
+  const textScale = (typeof es.textScale === 'number' && es.textScale >= 50 && es.textScale <= 250) ? es.textScale : 100;
+  document.documentElement.style.setProperty('--enter-scale', String(textScale / 100));
   // Apply with opacity baked into the gradient
   const grad = `linear-gradient(${angle}deg,${c1}b3,${c2}f2)`;
   document.documentElement.style.setProperty('--enter-gradient', grad);
@@ -4164,6 +4361,7 @@ function applyEnterScreen(es) {
       text: enterText.textContent,
       grad,
       textFont,
+      textScale,
       textFontUrl,
       style: 'classic',
       enabled: es.enabled !== false,
@@ -4841,29 +5039,9 @@ async function fetchLanyard() {
       }
     }
 
-    // ── STATUS (hero card) ──
-    const dot     = document.getElementById('statusDot');
-    const text    = document.getElementById('statusText');
-    const act     = document.getElementById('statusActivity');
-    const tip     = document.getElementById('statusTooltip');
-    const wrap    = document.getElementById('statusWrap');
-    const actWrap = document.getElementById('statusActivityWrap');
+    // Online / idle / dnd / offline — shown on the Discord profile card.
+    // (The hero card no longer shows a status line under the name.)
     const s = data.discord_status || 'offline';
-    dot.className = `status-dot ${s}`; text.textContent = STATUS_LABELS[s]||s; wrap.style.opacity = '1';
-    const heroActivity = data.activities?.find(a=>a.type===4)||data.activities?.find(a=>a.type===0)||data.activities?.find(a=>a.type===2);
-    if (heroActivity) {
-      // For a custom status (type 4) the activity's `name` is always the literal
-      // "Custom Status", so only use its `state` text — otherwise the hero would
-      // show "Custom Status" for anyone whose status is emoji-only or blank.
-      const label = heroActivity.type === 4
-        ? (heroActivity.state || '')
-        : (heroActivity.state || heroActivity.details || heroActivity.name || '');
-      if (label) {
-        act.textContent = `· ${label}`;
-        tip.textContent = label;
-        actWrap.style.display = 'flex';
-      } else { actWrap.style.display = 'none'; }
-    } else { actWrap.style.display = 'none'; }
 
     // ── DISCORD PROFILE WIDGET ──
     const dpUser = document.getElementById('dprofUsername');
@@ -5100,17 +5278,6 @@ fetchLanyard(); setInterval(fetchLanyard, 30000);
 })();
 
 // Mobile tap to toggle status tooltip — also close when tapping outside
-const statusWrapEl = document.getElementById('statusActivityWrap');
-if (statusWrapEl) {
-  statusWrapEl.addEventListener('click', function(e) {
-    e.stopPropagation();
-    this.classList.toggle('active');
-  });
-  document.addEventListener('click', () => {
-    statusWrapEl.classList.remove('active');
-  });
-}
-
 // Mobile tap to toggle audio title tooltip — same behavior
 const audioTitleWrap = document.getElementById('audioTitleWrap');
 if (audioTitleWrap) {
