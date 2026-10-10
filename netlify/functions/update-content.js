@@ -12,7 +12,7 @@
 // stale tab can't silently overwrite newer changes.
 const { getStore } = require('@netlify/blobs');
 const { checkAdmin, authFailure } = require('./lib/admin-auth');
-const { INTEREST_KEYS, normalizeSections } = require('./get-content');
+const { INTEREST_KEYS, normalizeSections, DEFAULT_TURNSTILE_SITE_KEY } = require('./get-content');
 const { writeIfUnchanged } = require('./lib/rate-limit');
 
 const MAX_BODY = 100 * 1024;
@@ -325,7 +325,7 @@ const HANDLERS = {
     build: (body, cur) => {
       const r = applySpec(body, FEATURES_SPEC, cur);
       requireTouched(r.touched, 'features');
-      if (r.next.turnstileGate === true && !r.next.turnstileSiteKey) fail('Add the Turnstile site key before turning the gate on.');
+      if (r.next.turnstileGate === true && !(r.next.turnstileSiteKey || DEFAULT_TURNSTILE_SITE_KEY)) fail('Add the Turnstile site key before turning the gate on.');
       return r.next;
     },
   },

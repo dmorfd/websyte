@@ -116,7 +116,10 @@ const DEFAULT_FAVORITE_GAME = { name: '', coverUrl: '', blurb: '', url: '' };
 const SECTION_IDS = ['discord', 'about', 'interests', 'favgame', 'games', 'watch', 'socials'];
 const DEFAULT_SECTIONS = SECTION_IDS.map((id) => ({ id, enabled: true }));
 
-const DEFAULT_FEATURES = { showDiscordPresence: true, showViews: true, turnstileGate: false, faviconUrl: '', siteFont: '', siteFontUrl: '', siteFontHandle: true, turnstileSiteKey: '' };
+// Cloudflare Turnstile SITE key (public). Also hard-coded in index.html; a key
+// saved in Admin → Settings → Danger Zone overrides both.
+const DEFAULT_TURNSTILE_SITE_KEY = '0x4AAAAAAFSspg-J6OhDu1IA';
+const DEFAULT_FEATURES = { showDiscordPresence: true, showViews: true, turnstileGate: false, faviconUrl: '', siteFont: '', siteFontUrl: '', siteFontHandle: true, turnstileSiteKey: DEFAULT_TURNSTILE_SITE_KEY };
 const DEFAULT_SOCIALS = [];
 
 const DEFAULT_ENTER_SCREEN = {
@@ -253,7 +256,7 @@ exports.handler = async (event) => {
     discordBanner: { ...DEFAULT_DISCORD_BANNER, ...obj(b['discord-banner']) },
     favoriteGame: { ...DEFAULT_FAVORITE_GAME, ...obj(b['favorite-game']) },
     sections: normalizeSections(obj(b.sections).sections || DEFAULT_SECTIONS),
-    features: { ...DEFAULT_FEATURES, ...obj(b.features) },
+    features: { ...DEFAULT_FEATURES, ...obj(b.features), turnstileSiteKey: obj(b.features).turnstileSiteKey || DEFAULT_TURNSTILE_SITE_KEY },
     socials: Array.isArray(obj(b.socials).socials) ? obj(b.socials).socials : DEFAULT_SOCIALS,
     // "Games I like" grid: up to six {title, imageUrl, url} (Content Editor → G).
     games: Array.isArray(obj(b.games).games) ? obj(b.games).games : [],
@@ -299,5 +302,6 @@ exports.DEFAULTS = {
   DEFAULT_SOCIALS, DEFAULT_ENTER_SCREEN, DEFAULT_GUILD_TAG, DEFAULT_ADMIN_THEME,
 };
 exports.SECTION_IDS = SECTION_IDS;
+exports.DEFAULT_TURNSTILE_SITE_KEY = DEFAULT_TURNSTILE_SITE_KEY;
 exports.INTEREST_KEYS = INTEREST_KEYS;
 exports.normalizeSections = normalizeSections;

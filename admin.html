@@ -3269,7 +3269,7 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
   const saveTurnstileGate = async () => {
     try {
       const key = turnstileKey.trim();
-      if (turnstileGate && !key) { showTurnstileStatus("add the site key first", "err"); return; }
+      // Blank = the site key built into the site (the server checks there is one).
       await apiUpdate({ type: "features", turnstileSiteKey: key, turnstileGate });
       showTurnstileStatus(turnstileGate ? "enabled ✓" : "disabled ✓");
       if (typeof reload === "function") reload();
@@ -3534,7 +3534,7 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
             <div className="field-sub" style={{ marginTop: 6 }}>adds a Cloudflare bot check between page load and "click to enter". Most visitors pass invisibly; some VPN users may see a checkbox. Catches sophisticated bots that the UA filter misses.</div>
             <div className="lbl" style={{ marginTop: 10 }}>Site key</div>
             <input className="input" value={turnstileKey} onChange={(e) => setTurnstileKey(e.target.value)} placeholder="0x4AAAAAAA…" maxLength={100} aria-label="Turnstile site key" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
-            <div className="field-sub">Cloudflare → Turnstile → your widget → Site Key. The widget's hostnames must include this site's domain. The <b>secret</b> key goes in Netlify as TURNSTILE_SECRET_KEY, never here.</div>
+            <div className="field-sub">Cloudflare → Turnstile → your widget → Site Key (pre-filled with the one built into the site). The widget's hostnames must include this site's domain. The <b>secret</b> key goes in Netlify as TURNSTILE_SECRET_KEY, never here.</div>
             <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 8 }}>
               <span className={"save-status " + turnstileStatus.kind}>{turnstileStatus.msg}</span>
               <button className="btn btn-primary btn-tiny" onClick={saveTurnstileGate}>Save</button>

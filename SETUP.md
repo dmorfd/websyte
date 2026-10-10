@@ -120,7 +120,7 @@ the site belongs to while they run:
 | Interests, about, bio, favorite game | Admin → Content Editor. Until then the site shows neutral placeholders ("First interest" … "Fourth interest", 一 二 三 四); the favorite-game card stays hidden until a game is set |
 | Discord API User-Agent | Netlify's built-in `URL` variable |
 
-| Turnstile site key | Admin → Settings → Danger Zone → Cloudflare Turnstile Gate → Site key (§5) |
+| Turnstile site key | Built in (`0x4AAAAAAFSspg-J6OhDu1IA`, in `index.html` and `get-content.js`). A key typed in Admin → Settings → Danger Zone → Cloudflare Turnstile Gate → Site key overrides it (§5) |
 
 Only two things in `index.html` are still typed in by hand, both optional:
 
@@ -174,8 +174,10 @@ Only two things in `index.html` are still typed in by hand, both optional:
    - Hostnames: the friend's custom domain **and** their `*.netlify.app`
      subdomain.
    - Mode: Managed.
-   - Site key → Admin → Settings → Danger Zone → Cloudflare Turnstile Gate →
-     Site key (then switch the gate on and Save). Secret key → Netlify env
+   - Site key: already built into the site (`0x4AAAAAAFSspg-J6OhDu1IA`); to
+     use a different widget, paste its key in Admin → Settings → Danger Zone →
+     Cloudflare Turnstile Gate → Site key. Switch the gate on there and Save.
+     Secret key → Netlify env
      `TURNSTILE_SECRET_KEY`.
 2. **R2** → create a bucket → Settings → Public access → enable the `r2.dev`
    subdomain, or connect a custom domain. Media URLs are pasted into the admin

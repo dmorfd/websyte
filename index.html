@@ -2381,7 +2381,7 @@ function applyFeatureToggles(features) {
   // The gate only runs when it's switched on AND has a site key, matching the
   // server (bot-filter blockedByGate).
   const gateKey = (typeof features.turnstileSiteKey === 'string') ? features.turnstileSiteKey.trim() : '';
-  const turnstileGate = features.turnstileGate === true && !!gateKey;   // default false
+  const turnstileGate = features.turnstileGate === true && !!(gateKey || TURNSTILE_SITE_KEY);   // default false
   if (gateKey) TURNSTILE_SITE_KEY = gateKey;
 
   // Cache the gate flag in localStorage so the next page load can show the
@@ -4192,9 +4192,9 @@ function setupEnterScreen() {
 }
 
 
-// The Turnstile SITE key comes from the admin (Settings → Danger Zone →
-// Cloudflare Turnstile Gate), via get-content's features.
-let TURNSTILE_SITE_KEY = '';
+// Cloudflare Turnstile SITE key (public). A key saved in the admin (Settings →
+// Danger Zone → Cloudflare Turnstile Gate) overrides this one.
+let TURNSTILE_SITE_KEY = '0x4AAAAAAFSspg-J6OhDu1IA';
 
 // Tell the visitor why verification can't go ahead instead of leaving the gate
 // on "checking your browser..." forever.
