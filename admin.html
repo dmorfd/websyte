@@ -716,7 +716,7 @@ function Login({ onSuccess }) {
   const avatarUrl = useDiscordAvatar();
   const identity = useSiteIdentity();
   const [markErr, setMarkErr] = useState(false);
-  const markSrc = !markErr ? (avatarUrl || "/favicon.png") : null;
+  const markSrc = !markErr ? (avatarUrl || identity.faviconUrl || "/favicon.png") : null;
 
   const submit = async (e) => {
     if (e) e.preventDefault();
@@ -794,7 +794,7 @@ function Sidebar({ active, setActive, open, close, onLock }) {
   const avatarUrl = useDiscordAvatar();
   const identity = useSiteIdentity();
   const [imgErr, setImgErr] = useState(false);
-  const src = !imgErr ? (avatarUrl || "/favicon.png") : null;
+  const src = !imgErr ? (avatarUrl || identity.faviconUrl || "/favicon.png") : null;
   return (
     <aside className={"sidebar " + (open ? "open" : "")}>
       <div className="brand">
@@ -842,6 +842,7 @@ function loadSiteIdentity() {
       .then((d) => ({
         discordUserId: typeof d.discordUserId === "string" && /^\d{15,25}$/.test(d.discordUserId) ? d.discordUserId : "",
         name: d.handle && typeof d.handle.name === "string" ? d.handle.name.trim() : "",
+        faviconUrl: d.features && typeof d.features.faviconUrl === "string" ? d.features.faviconUrl.trim() : "",
       }))
       .catch(() => { __siteIdentity = null; return { discordUserId: "", name: "" }; });
   }
@@ -880,6 +881,15 @@ function useSiteIdentity() {
   }, []);
   return identity;
 }
+// The site favicon (Settings → Public Site Features), on the admin tab too.
+function applyAdminFavicon(url) {
+  const href = url || "/favicon.png";
+  document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
+    if (l.getAttribute("href") !== href) { l.removeAttribute("type"); l.setAttribute("href", href); }
+  });
+}
+loadSiteIdentity().then((v) => applyAdminFavicon(v.faviconUrl));
+
 // "Jane Doe" → "JD". Shown only when the avatar and the favicon both fail.
 const initialsOf = (name) => (name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => Array.from(w)[0]).join("").toUpperCase();
 
@@ -2087,7 +2097,7 @@ function UIEditor({ data, reload }) {
                     color: "transparent", WebkitTextFillColor: "transparent",
                     animation: favAnim ? "favNameFlow 5s linear infinite" : "none",
                   } : { color: c1 }),
-                }}>{(data.favoriteGame && data.favoriteGame.name) || "Favorite game"}</span>
+                }}>Favorite game</span>
               );
             })()}
           </div>
@@ -2668,70 +2678,59 @@ function Presets({ data, reload }) {
 }
 
 /* ═══════════════ ENTER SCREEN ═══════════════ */
+// Load a font for an admin preview: a self-hosted file via FontFace, or a
+// Google Fonts family through ensureAdminFont.
+function usePreviewFont(name, url) {
+  useEffect(() => {
+    const n = (name || "").trim(), u = (url || "").trim();
+    if (!n || !/^https?:\/\//i.test(u)) return;
+    const t = setTimeout(() => {
+      try { new FontFace(n, `url(${JSON.stringify(u)})`).load().then((f) => document.fonts.add(f)).catch(() => {}); } catch {}
+    }, 500);
+    return () => clearTimeout(t);
+  }, [name, url]);
+}
+
 function EnterScreen({ data, reload }) {
   const es = data.enterScreen || {};
   const [enabled, setEnabled] = useState(es.enabled !== false);
-  // Which intro the site uses. 'classic' = the original gradient
-  // click-to-enter; 'modern' = the cinematic loading screen.
-  const [style, setStyle] = useState(es.style === "modern" ? "modern" : "classic");
   const [text, setText] = useState(es.text || "click to enter");
   const [c1, setC1] = useState(safeHex(es.gradColor1, "#3c0a1e"));
   const [c2, setC2] = useState(safeHex(es.gradColor2, "#000000"));
   const [angle, setAngle] = useState(typeof es.gradAngle === "number" ? es.gradAngle : 135);
-  const [accent, setAccent] = useState(safeHex(es.loaderAccent, "#a97bff"));
-  // Cinematic loader only: the "Welcome" wordmark's typeface...
-  const [ldFont, setLdFont] = useState(es.loaderFont || "");
-  const [ldFontUrl, setLdFontUrl] = useState(es.loaderFontUrl || "");
-  // ...and its ambient loop.
-  const [sfxOn, setSfxOn] = useState(es.sfxEnabled === true);
-  const [sfxVol, setSfxVol] = useState(typeof es.sfxVolume === "number" ? es.sfxVolume : 60);
-  const [sfxAmb, setSfxAmb] = useState(es.sfxAmbientUrl || "");
+  // The enter text's typeface: a Google Fonts family, or a font file URL (R2).
+  const [font, setFont] = useState(es.font || "");
+  const [fontUrl, setFontUrl] = useState(es.fontUrl || "");
   const [status, showStatus] = useSaveStatus();
-  const modern = style === "modern";
+  usePreviewFont(font, fontUrl);
 
-  // Audition a cue without leaving the panel.
-  const previewSound = (url) => {
-    if (!url || !/^https?:\/\//i.test(url)) { showStatus("add a valid https URL first", "err"); return; }
-    try {
-      const a = new Audio(url);
-      a.volume = Math.max(0, Math.min(1, sfxVol / 100));
-      a.play().catch(() => showStatus("couldn't play — check the URL / CORS", "err"));
-    } catch (e) { showStatus("couldn't play that URL", "err"); }
-  };
-
-  // Re-sync local fields whenever the App-level data changes (e.g. after a
-  // reload following a save). Without this, leaving + re-entering the section
-  // remounts the component and reads stale data — the bug where the enter
-  // text reverted to the purple default.
-  useEffect(() => {
-    const e = data.enterScreen || {};
+  const loadFrom = (e) => {
     setEnabled(e.enabled !== false);
     setText(e.text || "click to enter");
     setC1(safeHex(e.gradColor1, "#3c0a1e"));
     setC2(safeHex(e.gradColor2, "#000000"));
     setAngle(typeof e.gradAngle === "number" ? e.gradAngle : 135);
-    setStyle(e.style === "modern" ? "modern" : "classic");
-    setAccent(safeHex(e.loaderAccent, "#a97bff"));
-    setLdFont(e.loaderFont || "");
-    setLdFontUrl(e.loaderFontUrl || "");
-    setSfxOn(e.sfxEnabled === true);
-    setSfxVol(typeof e.sfxVolume === "number" ? e.sfxVolume : 60);
-    setSfxAmb(e.sfxAmbientUrl || "");
-  }, [data.enterScreen]);
+    setFont(e.font || "");
+    setFontUrl(e.fontUrl || "");
+  };
+  // Re-sync local fields whenever the App-level data changes (e.g. after a
+  // reload following a save). Without this, leaving + re-entering the section
+  // remounts the component and reads stale data — the bug where the enter
+  // text reverted to the purple default.
+  useEffect(() => { loadFrom(data.enterScreen || {}); }, [data.enterScreen]);
 
   const save = async () => {
     if (!text.trim()) { showStatus("text cannot be empty", "err"); return; }
     if (text.length > 100) { showStatus("text too long (max 100)", "err"); return; }
     if (!isHex(c1) || !isHex(c2)) { showStatus("invalid gradient color hex", "err"); return; }
-    if (!isHex(accent)) { showStatus("invalid loader accent hex", "err"); return; }
-    if (ldFont.trim() && !/^[A-Za-z0-9 \-_]+$/.test(ldFont.trim())) { showStatus("font name: letters, numbers, spaces, - and _ only", "err"); return; }
+    if (font.trim() && !/^[A-Za-z0-9 \-_]+$/.test(font.trim())) { showStatus("font name: letters, numbers, spaces, - and _ only", "err"); return; }
+    if (fontUrl.trim() && !/^https?:\/\//i.test(fontUrl.trim())) { showStatus("font URL must be a full https:// link", "err"); return; }
+    if (fontUrl.trim() && !font.trim()) { showStatus("give the font a name too", "err"); return; }
     try {
       await apiUpdate({
-        type: "enter-screen", enabled, style, loaderAccent: accent,
+        type: "enter-screen", enabled,
         text: text.trim(), gradColor1: c1, gradColor2: c2, gradAngle: angle,
-        loaderFont: ldFont.trim(), loaderFontUrl: ldFontUrl.trim(),
-        sfxEnabled: sfxOn, sfxVolume: sfxVol,
-        sfxAmbientUrl: sfxAmb.trim(),
+        font: font.trim(), fontUrl: fontUrl.trim(),
       });
       showStatus("saved ✓");
       // Refresh App data so leaving + re-entering keeps the saved values
@@ -2739,22 +2738,9 @@ function EnterScreen({ data, reload }) {
     } catch (e) { showStatus(e.message, "err"); }
   };
 
-  const resetToSaved = () => {
-    const e = data.enterScreen || {};
-    setEnabled(e.enabled !== false);
-    setText(e.text || "click to enter");
-    setC1(safeHex(e.gradColor1, "#3c0a1e"));
-    setC2(safeHex(e.gradColor2, "#000000"));
-    setAngle(typeof e.gradAngle === "number" ? e.gradAngle : 135);
-    setStyle(e.style === "modern" ? "modern" : "classic");
-    setAccent(safeHex(e.loaderAccent, "#a97bff"));
-    setLdFont(e.loaderFont || "");
-    setLdFontUrl(e.loaderFontUrl || "");
-    setSfxOn(e.sfxEnabled === true);
-    setSfxVol(typeof e.sfxVolume === "number" ? e.sfxVolume : 60);
-    setSfxAmb(e.sfxAmbientUrl || "");
-    showStatus("changes reset");
-  };
+  const resetToSaved = () => { loadFrom(data.enterScreen || {}); showStatus("changes reset"); };
+
+  const fontFamily = (font.trim() ? `'${font.trim()}', ` : "") + "'Noto Serif JP', serif";
 
   return (
     <div className="sec-page">
@@ -2775,148 +2761,48 @@ function EnterScreen({ data, reload }) {
             Shown before the site loads — visitors enter from here. This unlocks audio autoplay and helps with iOS Low Power Mode video blocking. If off, the site loads directly.
           </div>
 
-          {/* Which intro to use — the settings below follow this choice. */}
-          <div className="ctl-row" style={{ marginBottom: 14 }}>
-            <span>Style</span>
-            <div className="segmented" style={{ flex: "0 0 auto" }}>
-              <button className={!modern ? "active" : ""} onClick={() => setStyle("classic")}>Classic</button>
-              <button className={modern ? "active" : ""} onClick={() => setStyle("modern")}>Cinematic</button>
+          <div className="ctl-stack">
+            <div>
+              <div className="lbl-row"><span className="lbl" style={{ margin: 0 }}>Enter text</span><span className="lbl-count">{text.length} / 100</span></div>
+              <input className="input" value={text} onChange={(e) => setText(e.target.value)} maxLength={100} placeholder="click to enter" />
+            </div>
+            <div>
+              <div className="lbl">Enter text font</div>
+              <FontPicker
+                name={font} url={fontUrl} onName={setFont} onUrl={setFontUrl}
+                hint="for your own font, upload the file to R2 and paste its link (the bucket's CORS must allow your domain). Leave blank for the default, Noto Serif JP."
+              />
+            </div>
+            <div className="ctl-row">
+              <span>Gradient colors</span>
+              <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
+                <input type="color" value={c1} onChange={(e) => setC1(e.target.value)} className="swatch" style={{ width: 26, height: 26 }} />
+                <input type="color" value={c2} onChange={(e) => setC2(e.target.value)} className="swatch" style={{ width: 26, height: 26 }} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input className="input" value={c1} onChange={(e) => setC1(e.target.value)} maxLength={7} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
+              <input className="input" value={c2} onChange={(e) => setC2(e.target.value)} maxLength={7} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
+            </div>
+            <div>
+              <div className="sld-head"><span>Gradient angle</span><span className="sld-val">{angle}°</span></div>
+              <input className="slider" type="range" min="0" max="360" step="5" value={angle} onChange={(e) => setAngle(+e.target.value)} />
             </div>
           </div>
-          <div className="field-sub" style={{ marginBottom: 14 }}>
-            {modern
-              ? "Cinematic loader — fills to 100% as the site actually loads, then invites the click."
-              : "Classic — a gradient overlay with your text, clickable straight away."}
-          </div>
-
-          {modern ? (
-            <div className="ctl-stack">
-              <div className="ctl-row">
-                <span>Accent colour <span className="field-sub">drives every coloured element</span></span>
-                <div className="color-row" style={{ flex: "0 0 auto" }}>
-                  <input type="color" value={isHex(accent) ? accent : "#a97bff"} onChange={(e) => setAccent(e.target.value)} className="swatch" />
-                  <input className="input" style={{ width: 92, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} value={accent} onChange={(e) => setAccent(e.target.value)} maxLength={7} />
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {["#a97bff", "#5b8cff", "#2fd6c3", "#ff5c7a", "#ffffff"].map((p) => (
-                  <button key={p} title={p} onClick={() => setAccent(p)}
-                    style={{ width: 26, height: 26, borderRadius: 7, background: p, cursor: "pointer",
-                      border: accent.toLowerCase() === p ? "2px solid #fff" : "1px solid rgba(255,255,255,0.14)" }} />
-                ))}
-              </div>
-              <div className="field-sub">The “Welcome” wordmark always stays white — the accent colours the frame, loading lines, glow, stars and compass.</div>
-              <div>
-                <div className="lbl">“Welcome” font</div>
-                <FontPicker
-                  name={ldFont} url={ldFontUrl} onName={setLdFont} onUrl={setLdFontUrl}
-                  hint="applies to the wordmark only — the counter, labels and compass stay monospaced. Leave blank for the default, Michroma."
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="ctl-stack">
-              <div>
-                <div className="lbl-row"><span className="lbl" style={{ margin: 0 }}>Enter text</span><span className="lbl-count">{text.length} / 100</span></div>
-                <input className="input" value={text} onChange={(e) => setText(e.target.value)} maxLength={100} placeholder="click to enter" />
-              </div>
-              <div className="ctl-row">
-                <span>Gradient colors</span>
-                <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
-                  <input type="color" value={c1} onChange={(e) => setC1(e.target.value)} className="swatch" style={{ width: 26, height: 26 }} />
-                  <input type="color" value={c2} onChange={(e) => setC2(e.target.value)} className="swatch" style={{ width: 26, height: 26 }} />
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input className="input" value={c1} onChange={(e) => setC1(e.target.value)} maxLength={7} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
-                <input className="input" value={c2} onChange={(e) => setC2(e.target.value)} maxLength={7} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
-              </div>
-              <div>
-                <div className="sld-head"><span>Gradient angle</span><span className="sld-val">{angle}°</span></div>
-                <input className="slider" type="range" min="0" max="360" step="5" value={angle} onChange={(e) => setAngle(+e.target.value)} />
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Ambient loop — cinematic loader only */}
-        {modern && (
-          <div className="glass">
-            <div className="grp-head" style={{ justifyContent: "space-between" }}>
-              <span className="grp-title">Ambient sound</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: "rgba(253,245,236,0.6)" }}>Enabled</span>
-                <div className={"switch " + (sfxOn ? "on" : "")} onClick={() => setSfxOn(!sfxOn)} role="switch" aria-checked={sfxOn}><div className="knob" /></div>
-              </div>
-            </div>
-            <div className="field-sub" style={{ marginBottom: 14 }}>
-              A loop that plays under the loading animation and fades out when the visitor enters. Upload to R2 and paste the URL.
-            </div>
-            <div className="ctl-stack" style={{ opacity: sfxOn ? 1 : 0.45, pointerEvents: sfxOn ? "auto" : "none" }}>
-              <div>
-                <div className="lbl">Loop URL</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}
-                    value={sfxAmb} maxLength={500} placeholder="https://…r2.dev/hum-loop.mp3" onChange={(e) => setSfxAmb(e.target.value)} />
-                  <button className="btn btn-tiny" style={{ flex: "0 0 auto" }} onClick={() => previewSound(sfxAmb)}>Test</button>
-                </div>
-                <div className="field-sub">loops quietly while the bar fills</div>
-              </div>
-              <div>
-                <div className="sld-head"><span>Volume</span><span className="sld-val">{sfxVol}%</span></div>
-                <input className="slider" type="range" min="0" max="100" step="5" value={sfxVol} onChange={(e) => setSfxVol(+e.target.value)} />
-              </div>
-              <div className="field-sub">
-                Heads up: browsers block audio until the visitor interacts with the page, so this is best-effort — if it's blocked, it starts on their first tap/click instead. (With the Turnstile gate on, solving the challenge counts, so it'll play reliably there.)
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Live preview — mirrors whichever style is selected */}
+        {/* Live preview */}
         <div>
           <div className="grp-title" style={{ marginBottom: 10 }}>Live preview</div>
-          <div style={{ border: "1px solid rgba(255,255,255,0.09)", borderRadius: 16, background: modern ? "#050506" : "#050408", minHeight: 240, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
-            {modern ? (
-              <>
-                <div style={{ position: "absolute", inset: 0, background: `radial-gradient(420px 220px at 50% 78%, ${isHex(accent) ? accent : "#a97bff"}22, transparent 70%)` }} />
-                {/* corner brackets — two borders each, so they read as L-shapes */}
-                {(() => {
-                  const A = isHex(accent) ? accent : "#a97bff";
-                  const rule = `1.5px solid ${A}`;
-                  const glow = `drop-shadow(0 0 5px ${A})`;
-                  const corners = [
-                    { top: 14, left: 14, borderTop: rule, borderLeft: rule, borderRadius: "6px 0 0 0" },
-                    { top: 14, right: 14, borderTop: rule, borderRight: rule, borderRadius: "0 6px 0 0" },
-                    { bottom: 14, left: 14, borderBottom: rule, borderLeft: rule, borderRadius: "0 0 0 6px" },
-                    { bottom: 14, right: 14, borderBottom: rule, borderRight: rule, borderRadius: "0 0 6px 0" },
-                  ];
-                  return corners.map((c, i) => (
-                    <div key={i} style={{ position: "absolute", width: 26, height: 26, filter: glow, ...c }} />
-                  ));
-                })()}
-                <div style={{ position: "relative", textAlign: "center" }}>
-                  <div style={{ fontFamily: (ldFont.trim() ? `'${ldFont.trim()}', ` : "") + "'Michroma', sans-serif", fontSize: 20, letterSpacing: "0.12em", color: "#fff", textShadow: "0 0 14px rgba(255,255,255,0.35)" }}>Welcome</div>
-                </div>
-                <div style={{ position: "absolute", left: "8%", right: "8%", bottom: 54, height: 1,
-                  background: `linear-gradient(90deg, transparent, ${isHex(accent) ? accent : "#a97bff"} 20%, #fff 50%, ${isHex(accent) ? accent : "#a97bff"} 80%, transparent)`,
-                  boxShadow: `0 0 12px ${isHex(accent) ? accent : "#a97bff"}` }} />
-                <div style={{ position: "absolute", left: "8%", bottom: 64, fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: "0.3em", color: "rgba(255,255,255,0.55)" }}>LOADING</div>
-                <div style={{ position: "absolute", right: "8%", bottom: 64, fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: "0.3em", color: "#fff" }}>100.00%</div>
-                <div style={{ position: "absolute", left: 0, right: 0, bottom: 28, textAlign: "center", fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.45em", color: "#fff", animation: "enterPulse 3s ease infinite" }}>CLICK TO ENTER</div>
-              </>
-            ) : (
-              <>
-                <div style={{ position: "absolute", inset: 0, background: "radial-gradient(360px 200px at 50% 60%, rgba(230,74,82,0.1), transparent 65%)" }} />
-                <div style={{
-                  fontSize: 22, fontWeight: 650, letterSpacing: "0.04em", position: "relative",
-                  backgroundImage: `linear-gradient(${angle}deg, ${c1}, ${c2})`,
-                  WebkitBackgroundClip: "text", backgroundClip: "text",
-                  color: "transparent", WebkitTextFillColor: "transparent",
-                  animation: "enterPulse 3s ease infinite",
-                }}>{text || "click to enter"}</div>
-              </>
-            )}
+          <div style={{ border: "1px solid rgba(255,255,255,0.09)", borderRadius: 16, background: "#050408", minHeight: 240, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(360px 200px at 50% 60%, rgba(230,74,82,0.1), transparent 65%)" }} />
+            <div style={{
+              fontSize: 22, fontWeight: 650, letterSpacing: "0.04em", position: "relative", fontFamily,
+              backgroundImage: `linear-gradient(${angle}deg, ${c1}, ${c2})`,
+              WebkitBackgroundClip: "text", backgroundClip: "text",
+              color: "transparent", WebkitTextFillColor: "transparent",
+              animation: "enterPulse 3s ease infinite",
+            }}>{text || "click to enter"}</div>
           </div>
         </div>
 
@@ -3045,11 +2931,10 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
   const [turnstileStatus, showTurnstileStatus] = useSaveStatus();
   const [adminBgVideo, setAdminBgVideo] = useState(v.adminUrl || "");
   const [adminBgVideoEnabled, setAdminBgVideoEnabled] = useState(!!(v.adminUrl));
-  const [heroVideo, setHeroVideo] = useState(v.heroUrl || "");
-  const [heroVideoEnabled, setHeroVideoEnabled] = useState(!!(v.heroUrl));
+  const [favicon, setFavicon] = useState(f.faviconUrl || "");
+  const [faviconStatus, showFaviconStatus] = useSaveStatus();
   const [featStatus, showFeatStatus] = useSaveStatus();
   const [adminBgVideoStatus, showAdminBgVideoStatus] = useSaveStatus();
-  const [heroVideoStatus, showHeroVideoStatus] = useSaveStatus();
 
   // Initial theme values from backend data (passed in via props from App).
   // `open` in the deps re-runs this every time the panel opens, so reopening
@@ -3087,13 +2972,18 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
   };
   const saveAdminBgVideo = async () => {
     const adminUrl = adminBgVideoEnabled ? adminBgVideo.trim() : "";
-    try { await apiUpdate({ type: "video-bg", adminUrl }); showAdminBgVideoStatus("saved ✓"); }
+    // heroUrl is cleared too: the admin has one background video now.
+    try { await apiUpdate({ type: "video-bg", adminUrl, heroUrl: "" }); if (typeof reload === "function") reload(); showAdminBgVideoStatus("saved ✓"); }
     catch (e) { showAdminBgVideoStatus(e.message, "err"); }
   };
-  const saveHeroVideo = async () => {
-    const heroUrl = heroVideoEnabled ? heroVideo.trim() : "";
-    try { await apiUpdate({ type: "video-bg", heroUrl }); showHeroVideoStatus("saved ✓"); }
-    catch (e) { showHeroVideoStatus(e.message, "err"); }
+  const saveFavicon = async () => {
+    const url = favicon.trim();
+    try {
+      await apiUpdate({ type: "features", faviconUrl: url });
+      applyAdminFavicon(url);
+      if (typeof reload === "function") reload();
+      showFaviconStatus("saved ✓");
+    } catch (e) { showFaviconStatus(e.message, "err"); }
   };
   const saveGreetings = async () => {
     const list = greetings.map((g) => g.trim()).filter(Boolean);
@@ -3231,10 +3121,23 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
           </div>
 
           <div className="field" style={{ padding: 14 }}>
+            <div className="field-title">Favicon</div>
+            <div className="field-sub">the icon in the browser tab, for the site and this admin. Paste an image URL (e.g. on R2: .png, .ico or .svg). Blank = the site's own /favicon.png</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+              <img src={favicon.trim() || "/favicon.png"} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "contain", background: "rgba(255,255,255,0.05)", flex: "0 0 auto" }} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} onLoad={(e) => { e.currentTarget.style.visibility = "visible"; }} />
+              <input className="input" value={favicon} onChange={(e) => setFavicon(e.target.value)} placeholder="https://…r2.dev/favicon.png" maxLength={500} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 6 }}>
+              <span className={"save-status " + faviconStatus.kind}>{faviconStatus.msg}</span>
+              <button className="btn btn-primary btn-tiny" onClick={saveFavicon}>Save favicon</button>
+            </div>
+          </div>
+
+          <div className="field" style={{ padding: 14 }}>
             <div className="field-row">
               <div>
-                <div className="field-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><Ico.video /> Main Background Video</div>
-                <div className="field-sub">plays on the other admin sections when a Hero video is set below — on its own, it plays on Home only</div>
+                <div className="field-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><Ico.video /> Background Video</div>
+                <div className="field-sub">plays behind the admin Home page and fades out on the other sections. Its sound plays on Home — mute it with the speaker button in the top bar</div>
               </div>
               <div className={"switch " + (adminBgVideoEnabled ? "on" : "")} onClick={() => setAdminBgVideoEnabled(!adminBgVideoEnabled)}><div className="knob" /></div>
             </div>
@@ -3243,22 +3146,6 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
             <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 6 }}>
               <span className={"save-status " + adminBgVideoStatus.kind}>{adminBgVideoStatus.msg}</span>
               <button className="btn btn-primary btn-tiny" onClick={saveAdminBgVideo}>Save video</button>
-            </div>
-          </div>
-
-          <div className="field" style={{ padding: 14 }}>
-            <div className="field-row">
-              <div>
-                <div className="field-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><Ico.video /> Hero / Overview Video</div>
-                <div className="field-sub">only plays on the admin home page</div>
-              </div>
-              <div className={"switch " + (heroVideoEnabled ? "on" : "")} onClick={() => setHeroVideoEnabled(!heroVideoEnabled)}><div className="knob" /></div>
-            </div>
-            <input className="input" placeholder="https://…/hero.mp4" value={heroVideo} onChange={(e) => setHeroVideo(e.target.value)} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} disabled={!heroVideoEnabled} />
-            <div className="field-sub">if disabled, the main background video plays on Home instead (and nowhere else)</div>
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 6 }}>
-              <span className={"save-status " + heroVideoStatus.kind}>{heroVideoStatus.msg}</span>
-              <button className="btn btn-primary btn-tiny" onClick={saveHeroVideo}>Save hero video</button>
             </div>
           </div>
 
@@ -3657,7 +3544,7 @@ function App() {
 
   return (
     <>
-      <SiteVideoBackground url={data.videoBg?.adminUrl || ""} heroUrl={data.videoBg?.heroUrl || ""} isHero={active === "home"} />
+      <SiteVideoBackground url="" heroUrl={data.videoBg?.adminUrl || ""} isHero={active === "home"} />
       <div className={"shell " + (sidebarOpen ? "" : "sidebar-closed")}>
         <Sidebar active={active} setActive={navigate} open={sidebarOpen} close={() => setSidebarOpen(false)} onLock={logout} />
         <div className={"scrim " + (sidebarOpen ? "show" : "")} onClick={() => setSidebarOpen(false)} />

@@ -18,6 +18,31 @@
        on a phone that's easily 200ms+, long enough for the browser to paint the
        wrong intro overlay before this ever runs. -->
   <script>
+    // Load the enter text's font: a Google Fonts family, or a self-hosted file
+    // (e.g. on R2) via @font-face. Used here from cache and by applyEnterScreen.
+    window.__loadEnterFont = function (name, url) {
+      var root = document.documentElement;
+      name = (typeof name === 'string' ? name : '').replace(/['"\\;{}()<>]/g, '').trim();
+      if (!name) { root.style.removeProperty('--enter-font'); return; }
+      var key = 'enterfont-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      if (!document.getElementById(key)) {
+        var el;
+        if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+          var m = /\.(woff2|woff|otf|ttf)(\?|#|$)/i.exec(url);
+          var fmt = m ? ({ woff2: 'woff2', woff: 'woff', otf: 'opentype', ttf: 'truetype' })[m[1].toLowerCase()] : '';
+          el = document.createElement('style');
+          el.textContent = "@font-face{font-family:'" + name + "';src:url('" + url.replace(/['\\]/g, encodeURIComponent) + "')" +
+            (fmt ? " format('" + fmt + "')" : '') + ';font-display:swap;}';
+        } else {
+          el = document.createElement('link');
+          el.rel = 'stylesheet';
+          el.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(name).replace(/%20/g, '+') + '&display=swap';
+        }
+        el.id = key;
+        document.head.appendChild(el);
+      }
+      root.style.setProperty('--enter-font', "'" + name + "'");
+    };
     // CRITICAL: runs BEFORE any stylesheet so the right intro is the ONLY one
     // ever painted. Stamps <html data-intro> from the choice applyEnterScreen()
     // cached on the previous visit; CSS keyed on that attribute (search
@@ -28,32 +53,17 @@
       if (__c && typeof __c === 'object') {
         if (__c.text) window.__enterTextCache = __c.text;
         if (__c.enabled === false) window.__enterDisabledCache = true;
-        // Which intro to paint on the very first frame (no flash of the wrong one).
-        if (__c.style === 'modern') window.__enterStyleCache = 'modern';
-        if (__c.accent) window.__enterAccentCache = __c.accent;
-        document.documentElement.setAttribute('data-intro',
-          __c.enabled === false ? 'off' : (__c.style === 'modern' ? 'modern' : 'classic'));
-        // Only the classic intro uses the gradient. Applying it for a modern
-        // visitor painted their OLD enter-screen colours for a frame or two
-        // before the loader took over — the exact flash this guards against.
-        if (__c.grad && __c.style !== 'modern') document.documentElement.style.setProperty('--enter-gradient', __c.grad);
-        // Wordmark font + sound effects for the cinematic loader, so a
-        // returning visitor gets the right typeface and audio from frame one
-        // instead of Michroma-then-swap.
-        if (__c.font) window.__enterFontCache = __c.font;
-        if (__c.fontUrl) window.__enterFontUrlCache = __c.fontUrl;
-        if (__c.sfx && typeof __c.sfx === 'object') window.__enterSfxCache = __c.sfx;
+        document.documentElement.setAttribute('data-intro', __c.enabled === false ? 'off' : 'classic');
+        if (__c.grad) document.documentElement.style.setProperty('--enter-gradient', __c.grad);
+        if (__c.font) window.__loadEnterFont(__c.font, __c.fontUrl);
       }
       // Turnstile gate cache
       if (localStorage.getItem('turnstileGateEnabled') === '1') {
         window.__turnstileGateCache = true;
-        // The gate is an OPAQUE full-screen overlay above the loader, so if we
-        // let the loader run now the whole animation would play out unseen and
-        // the visitor would meet a finished, static frame. Hold its timeline
-        // until the gate clears (released by the verify handler, or by
-        // applyFeatureToggles if the toggle turns out to be off now).
-        window.__ldHold = true;
       }
+      // Favicon set in the admin (Settings → Public Site Features).
+      var __fav = localStorage.getItem('faviconCache');
+      if (__fav) document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(function (l) { l.removeAttribute('type'); l.href = __fav; });
       // Audio source cache — if last visit was in 'video' mode, hide the
       // soundbar on first paint via a CSS rule so it doesn't flash visible.
       if (localStorage.getItem('audioSourceCache') === 'video') {
@@ -77,7 +87,7 @@
       if (/[?&]perf=lite/.test(__qp)) window.__lowPerf = true;
     } catch (e) {}
   </script>
-  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Serif+JP:wght@300;400;600&family=DM+Sans:wght@300;400;500&family=Michroma&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Serif+JP:wght@300;400;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
   <!-- Cloudflare Turnstile loads near the </head> tag -->
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -87,14 +97,10 @@
        BEFORE this stylesheet is parsed, so the browser only ever lays out the
        correct overlay. Doing this in CSS rather than with a script after the
        markup is what stops the other intro flashing up for a frame on a slow
-       phone. !important so it beats #loaderScreen's inline display:none.
+       phone. !important so it beats any inline display.
        applyEnterScreen() re-stamps the attribute once the real settings land,
        so a changed setting still takes effect on this same load. */
-    html[data-intro="modern"] #enterScreen{display:none !important;}
-    html[data-intro="modern"] #loaderScreen{display:block !important;}
-    html[data-intro="classic"] #loaderScreen{display:none !important;}
-    html[data-intro="off"] #enterScreen,
-    html[data-intro="off"] #loaderScreen{display:none !important;}
+    html[data-intro="off"] #enterScreen{display:none !important;}
 
     /* ── A11Y: visible keyboard focus ──
        Keyboard users get a clear gold ring on any interactive element; mouse
@@ -424,47 +430,6 @@
     /* ══════════════════════════════
        CLICK-TO-ENTER OVERLAY
     ══════════════════════════════ */
-    /* ════ MODERN LOADING SCREEN (cinematic) ════
-       A virtual 1080-short-side stage scaled to cover the viewport, matching
-       the Claude Design composition. Every accent-coloured element reads the
-       single --ld-accent variable; the "Welcome" wordmark stays white. */
-    #loaderScreen{
-      position:fixed;inset:0;z-index:9999;
-      background:#050506;
-      overflow:hidden;
-      cursor:default;
-      transition:opacity .6s ease;
-      --ld-accent:#a97bff;
-    }
-    #loaderScreen.ready{cursor:pointer;}
-    #loaderScreen.fade-out{opacity:0;pointer-events:none;}
-    /* The scaled stage: children are positioned in stage pixels. */
-    #ldStage{position:absolute;left:50%;top:50%;transform-origin:50% 50%;will-change:transform;}
-    /* Camera push — a separate layer so the frame/wordmark can sit outside it. */
-    #ldCam{position:absolute;inset:0;transform-origin:50% 60%;will-change:transform;}
-    .ld-abs{position:absolute;left:0;top:0;}
-    #ldBase{position:absolute;inset:0;background:#050506;}
-    #ldGlow{position:absolute;pointer-events:none;}
-    #ldVign{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 30%,rgba(0,0,0,0.45) 100%);pointer-events:none;}
-    .ld-line{position:absolute;pointer-events:none;}
-    .ld-head{position:absolute;background:#fff;box-shadow:0 0 10px #fff;}
-    .ld-label{position:absolute;font-family:'JetBrains Mono',ui-monospace,monospace;white-space:nowrap;pointer-events:none;}
-    #ldWord{position:absolute;left:0;top:0;display:flex;align-items:center;justify-content:center;pointer-events:none;}
-    #ldWord span{
-      /* --ld-font is set from enterScreen.loaderFont (admin → Enter Screen).
-         Michroma is the design's original typeface and the fallback. */
-      font-family:var(--ld-font,'Michroma'),'Michroma',sans-serif;font-weight:400;color:#fff;line-height:1;
-      text-shadow:0 0 18px rgba(255,255,255,0.35),0 0 4px rgba(255,255,255,0.25);
-    }
-    #ldEnter{
-      position:absolute;left:0;text-align:center;
-      font-family:'JetBrains Mono',ui-monospace,monospace;
-      letter-spacing:.45em;color:#fff;pointer-events:none;
-    }
-    @media (prefers-reduced-motion: reduce){
-      #ldStage,#ldCam{transition:none !important;}
-    }
-
     #enterScreen{
       position:fixed;inset:0;z-index:9999;
       background:#000;
@@ -484,7 +449,7 @@
     }
     .enter-text{
       position:relative;z-index:2;
-      font-family:'Noto Serif JP',serif;
+      font-family:var(--enter-font,'Noto Serif JP'),'Noto Serif JP',serif;
       font-size:1.4rem;
       letter-spacing:.18em;
       color:rgba(255,235,235,.85);
@@ -1421,10 +1386,6 @@
 </script>
 
 <!-- LOADER -->
-<!-- Modern cinematic loader. Its children are built by setupModernLoader();
-     the shell paints the backdrop instantly so there's never a white flash. -->
-<div id="loaderScreen" style="display:none"><div id="ldStage"></div></div>
-
 <div id="enterScreen">
   <div class="enter-text" id="enterText">click to enter</div>
 </div>
@@ -1434,18 +1395,8 @@
   // custom gradient. Here we just patch the text content and visibility.
   try {
     var __et = document.getElementById('enterText');
-    // Modern style: show its shell immediately and keep the classic hidden.
-    if (window.__enterStyleCache === 'modern' && !window.__enterDisabledCache) {
-      var __ls = document.getElementById('loaderScreen');
-      if (__ls) {
-        __ls.style.display = '';
-        if (window.__enterAccentCache) __ls.style.setProperty('--ld-accent', window.__enterAccentCache);
-      }
-      document.getElementById('enterScreen').style.display = 'none';
-    }
     if (window.__enterDisabledCache) {
       document.getElementById('enterScreen').style.display = 'none';
-      var __ls2 = document.getElementById('loaderScreen'); if (__ls2) __ls2.style.display = 'none';
     } else if (window.__enterTextCache && __et) {
       // Return visitor — real text known instantly, reveal with no flash.
       __et.textContent = window.__enterTextCache;
@@ -1932,6 +1883,7 @@ async function loadContent() {
 
     // Site accent known up-front so the glow (applyUiVisuals) can use it.
     window.__siteAccent = (data.theme && typeof data.theme.siteAccent === 'string') ? data.theme.siteAccent : '';
+    applyFavicon(data.features && data.features.faviconUrl);
 
     // Update bio lines + restart typewriter
     if (Array.isArray(data.bioLines) && data.bioLines.length > 0) {
@@ -2236,15 +2188,9 @@ function applyFeatureToggles(features) {
     entryGate.classList.add('show');
     entryGate.classList.remove('hide');
     renderEntryGateWidget();
-    // setupEnterScreen will be called by the entry-gate success handler, and
-    // the cinematic loader stays held until then so its animation isn't
-    // wasted behind the gate.
-    window.__ldHold = true;
+    // setupEnterScreen will be called by the entry-gate success handler.
   } else {
     if (entryGate) entryGate.classList.remove('show');
-    // Cached flag said the gate was on, but it's off now — un-hold the loader
-    // immediately rather than making the visitor wait out the safety timeout.
-    if (window.__ldHold && typeof releaseModernLoader === 'function') releaseModernLoader();
     if (!window.__enterScreenInitialized && typeof setupEnterScreen === 'function') {
       window.__enterScreenInitialized = true;
       enterStarted = true;
@@ -3306,9 +3252,8 @@ function unlockAudioContext() {
   document.addEventListener(evt, unlockAudioContext, { once: true, passive: true })
 );
 
-// Shared "the visitor is in" routine — run by BOTH intros (the classic
-// click-to-enter overlay and the modern cinematic loader) so the site always
-// wakes up the same way: count the view, pop the hero, start the typewriter,
+// Shared "the visitor is in" routine — run when the visitor clicks the enter
+// screen (or right away when it's off), so the site always wakes up the same way: count the view, pop the hero, start the typewriter,
 // route audio and fade the given overlay out.
 // customExit: the caller is running its own reveal animation, so don't do the
 // plain opacity fade or hide the overlay — it owns both.
@@ -3362,547 +3307,6 @@ function enterSiteNow(overlayEl, customExit) {
     }, 600);
   }
 }
-
-// ════ MODERN CINEMATIC LOADER ════
-// Faithful port of the Claude Design composition (Void → Load → Resolve).
-// The one deliberate change from the mockup: the mockup's bar is on a fixed
-// 5.2s timeline, whereas here the fill and the percentage track REAL loading
-// progress, and "CLICK TO ENTER" only unlocks once that reaches 100%.
-// Every accent-coloured element reads a single accent value; the "Welcome"
-// wordmark stays white, exactly as the design specifies — only its TYPEFACE
-// is configurable (enterScreen.loaderFont).
-
-// Make a font family available for the loader wordmark. Curated picks come
-// from Google Fonts (the bare `family=` form is valid for every family, and
-// we only ever need weight 400 here); a custom family can be self-hosted by
-// also supplying a direct font-file URL.
-function ensureLoaderFont(name, url) {
-  if (typeof name !== 'string') return;
-  name = name.trim();
-  if (!name) return;
-  // Already in the document's main stylesheet link — nothing to fetch.
-  if (/^(Michroma|JetBrains Mono|DM Sans|Share Tech Mono|Noto Serif JP)$/i.test(name)) return;
-  const key = 'ldfont-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  if (document.getElementById(key)) return;
-  if (url && /^https?:\/\//i.test(url)) {
-    // Self-hosted file → @font-face. Format hint is optional; browsers sniff it.
-    const m = /\.(woff2|woff|otf|ttf)(\?|$)/i.exec(url);
-    const fmt = m ? ({ woff2: 'woff2', woff: 'woff', otf: 'opentype', ttf: 'truetype' })[m[1].toLowerCase()] : '';
-    const st = document.createElement('style');
-    st.id = key;
-    st.textContent = "@font-face{font-family:'" + name.replace(/'/g, '') + "';src:url('" + url + "')" +
-      (fmt ? " format('" + fmt + "')" : '') + ';font-display:swap;}';
-    document.head.appendChild(st);
-    return;
-  }
-  const link = document.createElement('link');
-  link.id = key;
-  link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(name).replace(/%20/g, '+') + '&display=swap';
-  document.head.appendChild(link);
-}
-
-function setupModernLoader(es) {
-  const root = document.getElementById('loaderScreen');
-  const stage = document.getElementById('ldStage');
-  if (!root || !stage || root.dataset.built) return;
-  root.dataset.built = '1';
-  root.style.display = '';
-
-  let accent = (typeof es.loaderAccent === 'string' && /^#[0-9a-fA-F]{6}$/.test(es.loaderAccent))
-    ? es.loaderAccent : '#a97bff';
-  root.style.setProperty('--ld-accent', accent);
-
-  // ── wordmark typeface ──
-  function applyFont(name, url) {
-    if (typeof name !== 'string' || !name.trim()) return;
-    ensureLoaderFont(name, url);
-    root.style.setProperty('--ld-font', "'" + name.trim().replace(/'/g, '') + "'");
-  }
-  applyFont(es.loaderFont, es.loaderFontUrl);
-  root.__ldSetFont = applyFont;   // late settings can restyle the wordmark
-
-  // ── sound effects ──
-  // One ambient loop that runs while the bar fills. BEST-EFFORT: browsers
-  // block audio until the page has had a user gesture, so it's retried on the
-  // first interaction rather than assumed to work.
-  let sfxAmbient = null, sfxVol = 0.6, sfxArmed = false;
-  function makeSound(url, loop) {
-    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return null;
-    try {
-      const a = new Audio(url);
-      a.preload = 'auto';
-      a.loop = !!loop;
-      a.volume = sfxVol;
-      return a;
-    } catch (e) { return null; }
-  }
-  function playSound(a) {
-    if (!a) return;
-    try { a.volume = sfxVol; a.play().catch(() => {}); } catch (e) {}
-  }
-  // Fade a looping cue out instead of cutting it, so handing over to the
-  // site's own audio isn't a hard clip.
-  function fadeOutSound(a, ms) {
-    if (!a) return;
-    const steps = 14, dt = Math.max(16, ms / steps), v0 = a.volume;
-    let i = 0;
-    const id = setInterval(() => {
-      i++;
-      try { a.volume = Math.max(0, v0 * (1 - i / steps)); } catch (e) {}
-      if (i >= steps) { clearInterval(id); try { a.pause(); } catch (e) {} }
-    }, dt);
-  }
-  root.__ldInitSfx = (cfg) => {
-    if (sfxArmed || !cfg || cfg.enabled !== true) return;
-    sfxArmed = true;
-    sfxVol = Math.max(0, Math.min(1, (typeof cfg.volume === 'number' ? cfg.volume : 60) / 100));
-    sfxAmbient = makeSound(cfg.ambientUrl, true);
-    if (sfxAmbient && started) playSound(sfxAmbient);
-    // Retry the blocked ambient loop on the first gesture anywhere on the page
-    // (for a gated visitor, solving Turnstile counts).
-    const kick = () => {
-      if (sfxAmbient && sfxAmbient.paused && !window.__enterSiteDone && started) playSound(sfxAmbient);
-    };
-    window.addEventListener('pointerdown', kick, { once: true, capture: true });
-    window.addEventListener('keydown', kick, { once: true, capture: true });
-  };
-
-  // ── easing + tween (same curves as the design) ──
-  const eOutCubic = (t) => { t -= 1; return t * t * t + 1; };
-  const eInOutQuart = (t) => (t < 0.5 ? 8 * t * t * t * t : 1 - 8 * (--t) * t * t * t);
-  const eOutExpo = (t) => (t === 1 ? 1 : 1 - Math.pow(2, -10 * t));
-  // Smoothstep — eases both ends like eInOutQuart but far less flat near 0,
-  // so a short wipe gets moving immediately instead of appearing to stall.
-  const eSmooth = (t) => t * t * (3 - 2 * t);
-  const tween = (from, to, start, end, ease) => (t) => {
-    if (t <= start) return from;
-    if (t >= end) return to;
-    return from + (to - from) * ease((t - start) / (end - start));
-  };
-  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-
-  // ── responsive virtual stage (short side 1080) ──
-  let W = 1920, H = 1080, LINE_Y = 960, U = 1;
-  function setLayout(vw, vh) {
-    const a = vw / vh;
-    if (a >= 1) { H = 1080; W = Math.round(1080 * Math.min(a, 2.6)); U = 1; }
-    else { W = 1080; H = Math.round(1080 / Math.max(a, 0.4)); U = 1.8; }
-    LINE_Y = H - (U > 1 ? 190 : 120) * U;
-  }
-
-  const LINES = [
-    { off: -32, delay: 0.20, len: 5.0, max: 0.78, op: 0.3 },
-    { off: -16, delay: 0.00, len: 4.4, max: 0.88, op: 0.45 },
-    { off: 0,   delay: 0.05, len: 5.8, max: 1.00, op: 1.00 },
-    { off: 16,  delay: 0.20, len: 2.3, max: 0.84, op: 0.45 },
-    { off: 32,  delay: 0.60, len: 4.8, max: 0.70, op: 0.3 },
-  ];
-  // The mockup staggers the lines across time; we re-express each line's
-  // window as a fraction of overall progress so they stagger across LOADING.
-  const SPAN = Math.max.apply(null, LINES.map((l) => l.delay + l.len));
-  LINES.forEach((l) => { l.s = l.delay / SPAN; l.e = (l.delay + l.len) / SPAN; });
-
-  const CUE_LOAD = 1.0;          // Void ends / Load begins (seconds)
-  const MONO = "'JetBrains Mono',ui-monospace,monospace";
-
-  // ── build DOM ──
-  const el = (tag, cls, parent) => { const n = document.createElement(tag); if (cls) n.className = cls; (parent || stage).appendChild(n); return n; };
-  const cam = el('div'); cam.id = 'ldCam';
-  const base = el('div', null, cam); base.id = 'ldBase';
-  const glow = el('div', null, cam); glow.id = 'ldGlow';
-  const starSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  starSvg.setAttribute('class', 'ld-abs'); cam.appendChild(starSvg);
-  const vign = el('div', null, cam); vign.id = 'ldVign';
-  const lineEls = LINES.map(() => {
-    const d = el('div', 'ld-line', cam);
-    return d;
-  });
-  const headL = el('div', 'ld-head', lineEls[2]);
-  const headR = el('div', 'ld-head', lineEls[2]);
-  const lblLoad = el('div', 'ld-label', cam); lblLoad.textContent = 'LOADING';
-  const lblVer = el('div', 'ld-label', cam); lblVer.textContent = 'v1.0.0';
-  const lblPct = el('div', 'ld-label', cam);
-  const enterEl = el('div', null, cam); enterEl.id = 'ldEnter';
-  const TOUCH = (typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches);
-  enterEl.textContent = TOUCH ? 'TAP TO ENTER' : 'CLICK TO ENTER';
-  // Wordmark + frame sit OUTSIDE the camera push, as in the design.
-  const word = el('div'); word.id = 'ldWord';
-  const wordSpan = document.createElement('span');
-  wordSpan.textContent = (typeof es.loaderText === 'string' && es.loaderText.trim()) ? es.loaderText.trim() : 'Welcome';
-  word.appendChild(wordSpan);
-  const frameSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  frameSvg.setAttribute('class', 'ld-abs');
-  frameSvg.style.overflow = 'visible';
-  stage.appendChild(frameSvg);
-
-  // Deterministic star field (same generator + seed as the design).
-  const rand = (() => { let a = 1337; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; })();
-  const STARS = Array.from({ length: 22 }, () => {
-    let x, y;
-    do { x = 0.05 + rand() * 0.9; y = 0.09 + rand() * 0.7; } while (Math.abs(x - 0.5) < 0.23 && Math.abs(y - 0.5) < 0.12);
-    return { x, y, r: 5 + rand() * 9, per: 5.5 + rand() * 4.5, ph: rand() * 10, spin: (rand() < 0.5 ? -1 : 1) * (6 + rand() * 14), white: rand() < 0.4 };
-  });
-  const starPts = (r) => Array.from({ length: 10 }, (_, i) => {
-    const ang = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.42 : r;
-    return (Math.cos(ang) * rr).toFixed(2) + ',' + (Math.sin(ang) * rr).toFixed(2);
-  }).join(' ');
-  const NS = 'http://www.w3.org/2000/svg';
-  const starNodes = STARS.map((st) => {
-    const g = document.createElementNS(NS, 'g');
-    const p = document.createElementNS(NS, 'polygon');
-    p.setAttribute('points', starPts(st.r));
-    p.setAttribute('fill', st.white ? '#fff' : accent);
-    p.style.filter = 'drop-shadow(0 0 6px ' + accent + ')';
-    g.appendChild(p); starSvg.appendChild(g);
-    return g;
-  });
-
-  // Corner brackets + edge rules + compass strip.
-  frameSvg.innerHTML =
-    '<defs>' +
-    '<linearGradient id="ldFadeH" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="0">' +
-    '<stop offset="0" stop-color="' + accent + '" stop-opacity="0"/>' +
-    '<stop offset="0.5" stop-color="' + accent + '" stop-opacity="0.9"/>' +
-    '<stop offset="1" stop-color="' + accent + '" stop-opacity="0"/>' +
-    '</linearGradient></defs>' +
-    '<g id="ldCorners"></g><g id="ldNav"></g>';
-  const gCorners = frameSvg.querySelector('#ldCorners');
-  const gNav = frameSvg.querySelector('#ldNav');
-  const gradH = frameSvg.querySelector('#ldFadeH');
-  const cornerPaths = [0, 1, 2, 3].map(() => {
-    const p = document.createElementNS(NS, 'path');
-    p.setAttribute('fill', 'none'); p.setAttribute('stroke', accent);
-    p.setAttribute('pathLength', '1'); p.setAttribute('stroke-dasharray', '1');
-    gCorners.appendChild(p); return p;
-  });
-  const edgeTop = document.createElementNS(NS, 'line'); edgeTop.setAttribute('stroke', 'url(#ldFadeH)'); gCorners.appendChild(edgeTop);
-  const edgeBot = document.createElementNS(NS, 'line'); edgeBot.setAttribute('stroke', 'url(#ldFadeH)'); gCorners.appendChild(edgeBot);
-
-  // ── real load progress ──
-  // Weighted milestones, so the bar reflects what's genuinely ready rather
-  // than a stopwatch. A slow creep keeps it alive between milestones, and a
-  // hard cap guarantees nobody is ever trapped behind a stalled resource.
-  const MILESTONES = { content: 0.4, fonts: 0.15, page: 0.45 };
-  const done = {};
-  const mark = (k) => { if (!done[k]) { done[k] = true; } };
-  window.__ldMarkContent = () => mark('content');
-  if (document.readyState === 'complete') mark('page');
-  else window.addEventListener('load', () => mark('page'));
-  try { (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(() => mark('fonts')); }
-  catch (e) { mark('fonts'); }
-  setTimeout(() => { mark('content'); mark('fonts'); mark('page'); }, 12000);  // never trap the visitor
-
-  const LOAD_DUR = 3.0;   // paced fill, so the counter reads as a real 0→100 tick
-  let shown = 0;          // eased progress actually displayed
-  let resolveAt = -1;     // time the Resolve phase began
-  let clickable = false;
-
-  // Two constraints, whichever is lower wins:
-  //   • a steady pace, so the bar is never an instant jump on a warm cache
-  //   • genuine readiness — it CANNOT pass 90% until everything has loaded,
-  //     so hitting 100% always means the site really is ready.
-  function targetProgress(T) {
-    const timeP = clamp01((T - CUE_LOAD) / LOAD_DUR);
-    let ready = 0;
-    for (const k in MILESTONES) if (done[k]) ready += MILESTONES[k];
-    const allReady = ready >= 0.999;
-    return Math.min(timeP, allReady ? 1 : 0.9);
-  }
-
-  // The clock only starts once the loader is actually VISIBLE. With the
-  // Turnstile gate on, that's after the gate clears — otherwise the whole
-  // animation would play out behind an opaque overlay and the visitor would
-  // meet a finished, static frame on the other side.
-  let t0 = 0;
-  let raf = 0;
-  let started = false;
-  let exitAt = 0;         // performance.now() of the enter click, 0 = not exiting
-
-  // Exit flash. Painted as a bloom centred on the beam rather than a flat
-  // white sheet — a full-bleed fill just washes the frame grey for the whole
-  // transition instead of reading as a flash. Inside the loader, so the
-  // clip-path wipe takes it along.
-  const flashEl = document.createElement('div');
-  flashEl.style.cssText = 'position:absolute;inset:0;opacity:0;pointer-events:none;z-index:3;';
-  root.appendChild(flashEl);
-
-  function frame(now) {
-    raf = requestAnimationFrame(frame);
-    const T = (now - t0) / 1000;
-
-    // progress easing (never goes backwards, eases toward target)
-    const tgt = targetProgress(T);
-    shown += (tgt - shown) * 0.12;
-    if (tgt >= 1 && shown > 0.995) shown = 1;   // snap, or exponential ease never lands
-    const prog = clamp01(shown);
-    if (prog >= 1 && resolveAt < 0) resolveAt = T;
-
-    const R = resolveAt < 0 ? -1 : T - resolveAt;          // seconds into Resolve
-    const merge = R < 0 ? 0 : tween(0, 1, 0, 0.6, eInOutQuart)(R);
-    const flash = R < 0 ? 0 : tween(0, 1, 0.45, 0.6, eOutExpo)(R) * (1 - tween(0, 1, 0.6, 1.4, eOutCubic)(R));
-
-    // ── stage transform ──
-    const vw = window.innerWidth, vh = window.innerHeight;
-    setLayout(vw, vh);
-    const sc = Math.max(vw / W, vh / H);
-    stage.style.width = W + 'px';
-    stage.style.height = H + 'px';
-    stage.style.transform = 'translate(-50%,-50%) scale(' + sc + ')';
-    const camScale = 1 + 0.035 * clamp01(T / 7.6);
-    cam.style.transform = 'scale(' + camScale + ')';
-
-    // ── backdrop glow ──
-    const gOn = tween(0, 1, CUE_LOAD, Math.max(CUE_LOAD + 0.1, resolveAt < 0 ? 6.2 : resolveAt), eOutCubic)(T);
-    const GW = Math.max(W, 1000);
-    glow.style.left = (W / 2 - GW * 0.47) + 'px';
-    glow.style.top = (LINE_Y - GW * 0.26) + 'px';
-    glow.style.width = (GW * 0.94) + 'px';
-    glow.style.height = (GW * 0.52) + 'px';
-    glow.style.opacity = (0.35 * gOn + 0.5 * flash).toFixed(3);
-    glow.style.background = 'radial-gradient(closest-side,' + accent + '33,transparent)';
-
-    // ── stars ──
-    starSvg.setAttribute('width', W); starSvg.setAttribute('height', H);
-    const sOn = tween(0, 1, 0.6, CUE_LOAD + 2.5, eOutCubic)(T);
-    for (let i = 0; i < STARS.length; i++) {
-      const st = STARS[i];
-      const v = Math.sin((T + st.ph) * Math.PI * 2 / st.per);
-      const op = sOn * Math.pow(Math.max(0, v), 2) * 0.85;
-      const scv = 0.6 + 0.4 * Math.max(0, v);
-      const g = starNodes[i];
-      g.setAttribute('transform', 'translate(' + (st.x * W) + ' ' + (st.y * H) + ') rotate(' + (T * st.spin) + ') scale(' + (scv * U) + ')');
-      g.setAttribute('opacity', op.toFixed(3));
-    }
-
-    // ── loading lines (progress-driven) ──
-    const born = tween(0, 1, 0.25, CUE_LOAD, eOutCubic)(T);
-    let mainP = 0;
-    for (let i = 0; i < LINES.length; i++) {
-      const l = LINES[i];
-      const p = eInOutQuart(clamp01((prog - l.s) / (l.e - l.s))) * l.max;
-      if (i === 2) mainP = p;
-      const seed = tween(0, 140 * U, 0.25, CUE_LOAD, eOutCubic)(T) * (i === 2 ? 1 : 0);
-      let w = Math.max(seed, p * W * 0.78);
-      w = w + (W - w) * merge;
-      const y = LINE_Y + l.off * U * (1 - merge);
-      const op = (i === 2 ? born : Math.min(1, p * 4) * l.op) * (i === 2 ? 1 : 1 - merge);
-      const d = lineEls[i];
-      d.style.left = (W / 2 - w / 2) + 'px';
-      d.style.top = y + 'px';
-      d.style.width = w + 'px';
-      d.style.height = (U > 1 ? 2 : 1) + 'px';
-      d.style.opacity = op.toFixed(3);
-      d.style.background = i === 2
-        ? 'linear-gradient(90deg,transparent,' + accent + ' 20%,#fff 50%,' + accent + ' 80%,transparent)'
-        : 'linear-gradient(90deg,transparent,#fff,transparent)';
-      d.style.boxShadow = i === 2 ? '0 0 ' + (12 + 18 * merge) + 'px ' + accent : 'none';
-    }
-    const showHeads = merge < 1 ? born : 0;
-    [headL, headR].forEach((hd, k) => {
-      hd.style.width = '4px'; hd.style.height = '3px'; hd.style.top = '-1px';
-      hd.style.opacity = showHeads.toFixed(3);
-      if (k === 0) { hd.style.left = '-2px'; hd.style.right = ''; }
-      else { hd.style.right = '-2px'; hd.style.left = ''; }
-    });
-
-    // ── readout ──
-    const rOp = tween(0, 1, CUE_LOAD, CUE_LOAD + 0.5, eOutCubic)(T) * (R < 0 ? 1 : 1 - tween(0, 1, 0, 0.4, eOutCubic)(R));
-    const M = Math.round(W * 0.11);
-    lblLoad.style.cssText = 'position:absolute;font-family:' + MONO + ';left:' + M + 'px;top:' + (LINE_Y - 64 * U) + 'px;font-size:' + (18 * U) + 'px;letter-spacing:0.3em;color:rgba(255,255,255,0.55);opacity:' + rOp.toFixed(3);
-    lblVer.style.cssText = 'position:absolute;font-family:' + MONO + ';left:' + M + 'px;top:' + (LINE_Y - 36 * U) + 'px;font-size:' + (13 * U) + 'px;letter-spacing:0.2em;color:rgba(255,255,255,0.35);opacity:' + rOp.toFixed(3);
-    lblPct.textContent = (mainP * 100).toFixed(2) + '%';
-    lblPct.style.cssText = 'position:absolute;font-family:' + MONO + ';right:' + M + 'px;top:' + (LINE_Y - 64 * U) + 'px;font-size:' + (18 * U) + 'px;letter-spacing:0.3em;color:#fff;font-variant-numeric:tabular-nums;opacity:' + rOp.toFixed(3);
-
-    // ── wordmark ──
-    const inA = tween(0, 1, 0.1, CUE_LOAD + 0.4, eOutCubic)(T);
-    word.style.width = W + 'px'; word.style.height = H + 'px';
-    wordSpan.style.fontSize = (64 * Math.min(U, 1.6)) + 'px';
-    wordSpan.style.letterSpacing = '0.12em';
-    wordSpan.style.marginRight = '-0.12em';
-    wordSpan.style.opacity = inA.toFixed(3);
-
-    // ── frame + compass ──
-    frameSvg.setAttribute('width', W); frameSvg.setAttribute('height', H);
-    const dr = tween(0, 1, 0.1, CUE_LOAD + 0.4, eInOutQuart)(T);
-    const edge = tween(0, 1, 0.3, CUE_LOAD + 0.9, eInOutQuart)(T);
-    const I = 22 * U, ARM = 70 * U, C = 10 * U, cx = W / 2, I0 = 22;
-    gCorners.style.filter = 'drop-shadow(0 0 ' + (3 + 8 * flash) + 'px ' + accent + ')';
-    gCorners.setAttribute('opacity', (0.8 + 0.2 * flash).toFixed(3));
-    const cornerD = 'M ' + I + ' ' + (I + ARM) + ' L ' + I + ' ' + (I + C) + ' L ' + (I + C) + ' ' + I + ' L ' + (I + ARM) + ' ' + I;
-    const flips = ['', 'translate(' + W + ' 0) scale(-1 1)', 'translate(0 ' + H + ') scale(1 -1)', 'translate(' + W + ' ' + H + ') scale(-1 -1)'];
-    cornerPaths.forEach((p, k) => {
-      p.setAttribute('d', cornerD);
-      p.setAttribute('transform', flips[k]);
-      p.setAttribute('stroke-width', 1.5 * U);
-      p.setAttribute('stroke-dashoffset', 1 - dr);
-    });
-    const half = (W / 2 - I - ARM - 40 * U) * edge;
-    gradH.setAttribute('x1', cx - half); gradH.setAttribute('x2', cx + half);
-    edgeTop.setAttribute('x1', cx - half); edgeTop.setAttribute('x2', cx + half);
-    edgeTop.setAttribute('y1', I); edgeTop.setAttribute('y2', I); edgeTop.setAttribute('stroke-width', 1.5 * U);
-    edgeBot.setAttribute('x1', cx - half); edgeBot.setAttribute('x2', cx + half);
-    edgeBot.setAttribute('y1', H - I); edgeBot.setAttribute('y2', H - I); edgeBot.setAttribute('stroke-width', 1.5 * U);
-
-    const navOp = tween(0, 1, CUE_LOAD + 0.4, CUE_LOAD + 1.6, eOutCubic)(T) * 0.55;
-    const heading = 212 + 18 * Math.sin(T * 0.35);
-    const NW = 460, PX = 4, NY = I0 + 18;
-    let nav = '';
-    for (let deg = Math.floor((heading - NW / 2 / PX) / 5) * 5; deg <= heading + NW / 2 / PX; deg += 5) {
-      const x = cx + (deg - heading) * PX;
-      const dx = Math.abs(x - cx) / (NW / 2);
-      if (dx > 1) continue;
-      const fade = 1 - dx * dx;
-      const major = deg % 15 === 0;
-      nav += '<g opacity="' + fade.toFixed(3) + '"><rect x="' + (x - 0.5) + '" y="' + NY + '" width="1" height="' + (major ? 9 : 5) + '" fill="#fff"/>';
-      if (major) nav += '<text x="' + x + '" y="' + (NY + 24) + '" text-anchor="middle" fill="#fff" style="font-family:' + MONO + ';font-size:11px;letter-spacing:0.05em">' + (((deg % 360) + 360) % 360) + '</text>';
-      nav += '</g>';
-    }
-    nav += '<path d="M ' + (cx - 5) + ' ' + (NY - 7) + ' L ' + (cx + 5) + ' ' + (NY - 7) + ' L ' + cx + ' ' + (NY - 1) + ' Z" fill="' + accent + '"/>';
-    nav += '<text x="' + cx + '" y="' + (NY + 44) + '" text-anchor="middle" fill="' + accent + '" style="font-family:' + MONO + ';font-size:12px;letter-spacing:0.1em">' + Math.round(((heading % 360) + 360) % 360) + '</text>';
-    gNav.innerHTML = nav;
-    gNav.setAttribute('opacity', navOp.toFixed(3));
-    const navScale = Math.min(U, (W - 2 * (I + ARM + 30 * U)) / NW);
-    gNav.setAttribute('transform', 'translate(' + cx + ' ' + I + ') scale(' + navScale + ') translate(' + (-cx) + ' ' + (-I0) + ')');
-
-    // ── click to enter ──
-    const eA = R < 0 ? 0 : tween(0, 1, 0.6, 1.2, eOutCubic)(R);
-    const pulse = R < 0 ? 1 : 1 - 0.35 * (1 - Math.cos((R - 0.6) * Math.PI * 2 / 1.4)) / 2;
-    enterEl.style.top = (LINE_Y + 26 * U) + 'px';
-    enterEl.style.width = W + 'px';
-    enterEl.style.fontSize = (18 * U) + 'px';
-    enterEl.style.opacity = (eA * pulse).toFixed(3);
-    enterEl.style.transform = 'translateY(' + ((1 - eA) * 10) + 'px)';
-    if (!clickable && eA > 0.99) { clickable = true; root.classList.add('ready'); }
-
-    // ── exit: the beam swallows the screen and wipes upward ──
-    // Overrides the frame above once the visitor clicks. The site is already
-    // live and painting underneath, so the wipe genuinely reveals it.
-    if (exitAt > 0) {
-      const E = (now - exitAt) / 1000;
-
-      // Everything except the beam clears out fast, so the wipe stays clean.
-      const dim = (1 - clamp01(E / 0.2)).toFixed(3);
-      [starSvg, glow, vign, lblLoad, lblVer, lblPct, enterEl, frameSvg, word].forEach((n) => { n.style.opacity = dim; });
-      [0, 1, 3, 4].forEach((i) => { lineEls[i].style.opacity = '0'; });
-
-      // The beam snaps to full width, goes white-hot and thickens.
-      const punch = eOutExpo(clamp01(E / 0.13));
-      const bh = (U > 1 ? 2 : 1) * (1 + 3.4 * punch);
-      const beam = lineEls[2];
-      beam.style.opacity = '1';
-      beam.style.left = '0px';
-      beam.style.width = W + 'px';
-      beam.style.height = bh + 'px';
-      beam.style.background = 'linear-gradient(90deg,' + accent + ',#fff 35%,#fff 65%,' + accent + ')';
-      beam.style.boxShadow = '0 0 ' + (16 + 60 * punch) + 'px ' + accent + ',0 0 ' + (6 + 22 * punch) + 'px #fff';
-
-      // Wipe in two beats: the strip below the beam goes first (0.14s, so the
-      // beam visibly "charges"), then it rides the cut edge all the way up.
-      const beamVY = (LINE_Y - H / 2) * sc + vh / 2;     // beam's viewport y
-      const b0 = clamp01(1 - beamVY / vh);               // viewport fraction below it
-      const B = E < 0.14
-        ? b0 * eOutCubic(E / 0.14)
-        : b0 + (1 - b0) * eSmooth(clamp01((E - 0.14) / 0.5));
-      root.style.clipPath = 'inset(0 0 ' + (B * 100).toFixed(3) + '% 0)';
-      if (E >= 0.14) {
-        // Glue the beam to the cut edge (viewport y → stage px).
-        beam.style.top = ((((vh * (1 - B)) - vh / 2) / sc) + H / 2 - bh / 2) + 'px';
-      }
-
-      // A short bloom off the beam at the punch, then a last camera push.
-      const fop = E < 0.09 ? E / 0.09 : 1 - clamp01((E - 0.09) / 0.2);
-      const fy = (100 * (1 - B)).toFixed(2);
-      flashEl.style.background = 'radial-gradient(ellipse 130% 42% at 50% ' + fy + '%,rgba(255,255,255,0.95),' + accent + '55 35%,transparent 72%)';
-      flashEl.style.opacity = clamp01(fop).toFixed(3);
-      cam.style.transform = 'scale(' + (camScale + 0.08 * B) + ')';
-
-      if (E >= 0.66) {
-        cancelAnimationFrame(raf);
-        root.style.clipPath = '';
-        root.style.display = 'none';
-      }
-    }
-  }
-  // Kick the timeline off (idempotent). Held back while the Turnstile gate
-  // is covering the screen; released by releaseModernLoader().
-  function startTimeline() {
-    if (started) return;
-    started = true;
-    t0 = performance.now();
-    raf = requestAnimationFrame(frame);
-    if (sfxAmbient) playSound(sfxAmbient);
-  }
-  root.__ldStart = startTimeline;
-  if (window.__ldHold) {
-    // Safety net: if the gate never resolves (stale cache, Turnstile script
-    // blocked, verify endpoint down) don't leave the visitor on a dead frame.
-    setTimeout(() => { if (!window.__ldHold) return; window.__ldHold = false; startTimeline(); }, 20000);
-  } else {
-    startTimeline();
-  }
-
-  root.addEventListener('click', () => {
-    if (!clickable || exitAt > 0) return;   // locked until the bar hits 100%
-    window.__enterClickHappened = true;
-    fadeOutSound(sfxAmbient, 500);   // hand over to the site's own audio
-    const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) {
-      cancelAnimationFrame(raf);
-      enterSiteNow(root);            // plain cross-fade
-      return;
-    }
-    // Wake the site FIRST so it's already painting behind the wipe, then let
-    // the frame loop run the reveal (it owns hiding the overlay).
-    enterSiteNow(root, true);
-    exitAt = performance.now();
-  });
-
-  // Repaint the accent if the real settings arrive after we booted from cache.
-  // Most elements read `accent` every frame; these few are painted once.
-  root.__ldSetAccent = (hex) => {
-    if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex) || hex === accent) return;
-    accent = hex;
-    root.style.setProperty('--ld-accent', accent);
-    starNodes.forEach((g, i) => {
-      const p = g.firstChild;
-      if (!STARS[i].white) p.setAttribute('fill', accent);
-      p.style.filter = 'drop-shadow(0 0 6px ' + accent + ')';
-    });
-    cornerPaths.forEach((p) => p.setAttribute('stroke', accent));
-    gradH.querySelectorAll('stop').forEach((st) => st.setAttribute('stop-color', accent));
-  };
-}
-
-// Let the cinematic loader's timeline run. Called once the Turnstile gate has
-// been cleared (or once we learn the gate isn't actually on). Safe to call
-// when there's no loader, when it was never held, or more than once.
-function releaseModernLoader() {
-  window.__ldHold = false;
-  const r = document.getElementById('loaderScreen');
-  if (r && typeof r.__ldStart === 'function') r.__ldStart();
-}
-
-// Boot the loader IMMEDIATELY when the cached choice is 'modern'. It is the
-// loading screen, so it has to be animating while /get-content is still in
-// flight — waiting for that response would defeat the point. applyEnterScreen()
-// later just repaints the accent and ticks the content milestone.
-try {
-  if (window.__enterStyleCache === 'modern' && !window.__enterDisabledCache) {
-    setupModernLoader({
-      style: 'modern',
-      loaderAccent: window.__enterAccentCache || '#a97bff',
-      loaderFont: window.__enterFontCache || '',
-      loaderFontUrl: window.__enterFontUrlCache || '',
-    });
-    // Sound effects too, so a returning visitor hears the ambient cue from the
-    // start of the animation rather than a second into it.
-    const __lr = document.getElementById('loaderScreen');
-    if (__lr && window.__enterSfxCache && typeof __lr.__ldInitSfx === 'function') {
-      __lr.__ldInitSfx(window.__enterSfxCache);
-    }
-  }
-} catch (e) { console.error('[loader] boot failed:', e); }
 
 // ════ CLICK-TO-ENTER SCREEN ════
 function setupEnterScreen() {
@@ -3996,9 +3400,6 @@ function renderEntryGateWidget() {
               setTimeout(() => {
                 gate.classList.remove('show');
                 gate.classList.add('hide');
-                // The loader is finally visible — start (or re-start) its
-                // animation now so the visitor actually sees it.
-                if (typeof releaseModernLoader === 'function') releaseModernLoader();
                 if (!window.__enterScreenInitialized) {
                   window.__enterScreenInitialized = true;
                   enterStarted = true;
@@ -4030,71 +3431,21 @@ function renderEntryGateWidget() {
   }
 }
 
-// Apply enter screen settings (called from loadContent). Routes to whichever
-// intro the admin picked: 'classic' (gradient click-to-enter) or 'modern'
-// (the cinematic loader).
+// Apply enter screen settings (called from loadContent): text, gradient and
+// the enter text's font, cached so the next visit paints them on frame one.
 function applyEnterScreen(es) {
   if (!es || typeof es !== 'object') return;
   const enterEl = document.getElementById('enterScreen');
   const enterText = document.getElementById('enterText');
-  const loaderEl = document.getElementById('loaderScreen');
   if (!enterEl || !enterText) return;
 
-  const modern = es.style === 'modern';
-  // Re-stamp the first-paint routing attribute with the REAL choice. The boot
-  // script set it from cache; if the admin has since switched intros, this is
-  // what lets the correct one take over on this very load (and stops the CSS
-  // !important rules pinning the stale one in place).
-  document.documentElement.setAttribute('data-intro',
-    es.enabled === false ? 'off' : (modern ? 'modern' : 'classic'));
-  const sfx = {
-    enabled: es.sfxEnabled === true,
-    volume: (typeof es.sfxVolume === 'number' && es.sfxVolume >= 0 && es.sfxVolume <= 100) ? es.sfxVolume : 60,
-    ambientUrl: typeof es.sfxAmbientUrl === 'string' ? es.sfxAmbientUrl : '',
-  };
-
-  // Remember the choice, accent, wordmark font and sound cues so the next
-  // visit paints and sounds right on the very first frame (the boot script in
-  // <head> reads this).
-  try {
-    const prev = JSON.parse(localStorage.getItem('enterScreenCache') || '{}') || {};
-    localStorage.setItem('enterScreenCache', JSON.stringify({
-      ...prev,
-      style: modern ? 'modern' : 'classic',
-      accent: (typeof es.loaderAccent === 'string' && /^#[0-9a-fA-F]{6}$/.test(es.loaderAccent)) ? es.loaderAccent : '#a97bff',
-      font: typeof es.loaderFont === 'string' ? es.loaderFont : '',
-      fontUrl: typeof es.loaderFontUrl === 'string' ? es.loaderFontUrl : '',
-      sfx: sfx,
-      enabled: es.enabled !== false,
-    }));
-  } catch (e) {}
-
-  if (modern && es.enabled !== false) {
-    enterEl.style.display = 'none';
-    // The loader owns the click gate from here; it calls enterSiteNow() once
-    // progress hits 100% and the visitor clicks.
-    if (typeof setupModernLoader === 'function') setupModernLoader(es);
-    if (loaderEl && typeof loaderEl.__ldSetAccent === 'function') loaderEl.__ldSetAccent(es.loaderAccent);
-    // Font + audio may differ from what the cache booted with (or be unknown
-    // on a first visit) — apply the real values now.
-    if (loaderEl && typeof loaderEl.__ldSetFont === 'function') loaderEl.__ldSetFont(es.loaderFont, es.loaderFontUrl);
-    if (loaderEl && typeof loaderEl.__ldInitSfx === 'function') loaderEl.__ldInitSfx(sfx);
-    // Tell the loader the content fetch finished — one of its progress milestones.
-    if (typeof window.__ldMarkContent === 'function') window.__ldMarkContent();
-    return;
-  }
-
-  // Classic from here on — make sure the modern shell is out of the way.
-  if (loaderEl) loaderEl.style.display = 'none';
-  // A visitor whose cache said 'modern' had this inline-hidden at boot. If the
-  // admin has since switched back to classic, un-hide it — otherwise they'd be
-  // stuck on a blank screen with no way into the site.
-  enterEl.style.display = '';
+  // Re-stamp the first-paint routing attribute with the real setting (the
+  // boot script set it from cache) — unless the visitor already entered.
+  if (!window.__enterSiteDone) document.documentElement.setAttribute('data-intro', es.enabled === false ? 'off' : 'classic');
 
   // If user disabled enter screen, hide it immediately and proceed
   if (es.enabled === false) {
     enterEl.style.display = 'none';
-    if (loaderEl) loaderEl.style.display = 'none';
     const heroCard = document.getElementById('heroCard');
     if (heroCard && !heroCard.classList.contains('popped')) heroCard.classList.add('popped');
     // Also start the bio typewriter since there's no click to trigger it
@@ -4102,12 +3453,21 @@ function applyEnterScreen(es) {
     // No enter-click gate available — record the view now. Server-side
     // bot UA filtering still applies, so this isn't a free pass to bots.
     if (typeof logVisitOnce === 'function') logVisitOnce();
+    try {
+      const prev = JSON.parse(localStorage.getItem('enterScreenCache') || '{}') || {};
+      localStorage.setItem('enterScreenCache', JSON.stringify({ ...prev, enabled: false }));
+    } catch {}
     return;
   }
 
   if (typeof es.text === 'string' && es.text.trim()) {
     enterText.textContent = es.text.trim();
   }
+  // Custom font for the enter text (Admin → Enter Screen): a Google Fonts
+  // family name, or a font file URL (e.g. on R2).
+  const font = typeof es.font === 'string' ? es.font.trim() : '';
+  const fontUrl = typeof es.fontUrl === 'string' ? es.fontUrl.trim() : '';
+  if (window.__loadEnterFont) window.__loadEnterFont(font, fontUrl);
   enterText.classList.add('ready'); // reveal now that the real text/gradient are set
 
   // Build gradient from color1, color2, angle
@@ -4122,15 +3482,24 @@ function applyEnterScreen(es) {
   // INSTANTLY (before /get-content fetches) — kills the half-second flash
   // of default text/background that visitors saw before.
   try {
-    const prev = JSON.parse(localStorage.getItem('enterScreenCache') || '{}') || {};
     localStorage.setItem('enterScreenCache', JSON.stringify({
-      ...prev,
       text: enterText.textContent,
       grad,
-      style: 'classic',
-      enabled: es.enabled !== false,
+      font,
+      fontUrl,
+      enabled: true,
     }));
   } catch {}
+}
+
+// Favicon from the admin (Settings → Public Site Features); blank = the site's
+// own /favicon.png. Cached so the next visit's first paint already uses it.
+function applyFavicon(url) {
+  const href = (typeof url === 'string' && url.trim()) ? url.trim() : '/favicon.png';
+  document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
+    if (l.getAttribute('href') !== href) { l.removeAttribute('type'); l.setAttribute('href', href); }
+  });
+  try { if (href === '/favicon.png') localStorage.removeItem('faviconCache'); else localStorage.setItem('faviconCache', href); } catch (e) {}
 }
 
 // ════ HERO NAME AUTO-FIT ════

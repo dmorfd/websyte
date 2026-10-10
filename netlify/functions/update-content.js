@@ -195,24 +195,20 @@ const GUILD_TAG_SPEC = {
 
 const ENTER_SCREEN_SPEC = {
   enabled: (v) => bool(v, 'Intro gate'),
-  style: (v) => oneOf(v, 'Style', ['classic', 'modern']),
   text: (v) => text(v, 'Enter text', 100, { required: true }),
   gradColor1: (v) => hex(v, 'Gradient color 1'),
   gradColor2: (v) => hex(v, 'Gradient color 2'),
   gradAngle: (v) => num(v, 'Gradient angle', 0, 360),
-  loaderAccent: (v) => hex(v, 'Loader accent colour'),
-  loaderFont: (v) => fontName(v, '"Welcome" font'),
-  // The public loader only loads absolute http(s) URLs for these two.
-  loaderFontUrl: (v) => url(v, '"Welcome" font URL'),
-  sfxEnabled: (v) => bool(v, 'Ambient sound'),
-  sfxVolume: (v) => num(v, 'Ambient volume', 0, 100),
-  sfxAmbientUrl: (v) => url(v, 'Loop URL'),
+  font: (v) => fontName(v, 'Enter text font'),
+  // A full http(s) URL to the font file (e.g. on R2) — loaded by @font-face.
+  fontUrl: (v) => url(v, 'Enter text font URL'),
 };
 
 const FEATURES_SPEC = {
   showDiscordPresence: (v) => bool(v, 'Discord Presence'),
   showViews: (v) => bool(v, 'Profile Views'),
   turnstileGate: (v) => bool(v, 'Cloudflare Turnstile Gate'),
+  faviconUrl: (v) => url(v, 'Favicon URL', { relative: true }),
 };
 
 const ADMIN_THEME_SPEC = {

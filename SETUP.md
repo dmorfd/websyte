@@ -3,7 +3,7 @@
 This copy keeps the following.
 
 **Public site**
-- The enter/loading screen, in both the classic gradient and the cinematic loader.
+- The click-to-enter screen (classic gradient), now with a custom font option for its text. The cinematic loader was removed.
 - The hero card: avatar, name, live Discord status and the typewriter bio.
 - The audio player.
 - The Discord presence card with interests.
@@ -56,7 +56,7 @@ This copy keeps the following.
 | 21 | `favicon.png` | **Copy in from your site**, then replace the artwork |
 | 22 | `cover.png` | **Copy in.** Keep the filename and replace the artwork (see §4) |
 | 23–25 | `discord-icon.png`, `spotify-icon.png`, `steam-icon.png` | **Copy in** unchanged. They're social-link icon URLs you paste in the admin |
-| 26 | `loader-sfx.mp3` | **Copy in** unchanged. The cinematic loader's ambient loop (see §4) |
+| 26 | ~~`loader-sfx.mp3`~~ | **No longer needed** — it was the cinematic loader's sound, and the loader is gone |
 | 27 | `SETUP.md` | This file |
 
 The 6 binary assets (rows 21–26) aren't in the repo. Copy them from your site
@@ -147,11 +147,17 @@ Only three things in `index.html` are still typed in by hand:
 - **`discord-icon.png`, `spotify-icon.png`, `steam-icon.png`**: not referenced
   in code by design. In Content Editor → F Social links, paste them as icon
   URLs, e.g. `/discord-icon.png`.
-- **`loader-sfx.mp3`**: Enter Screen → Cinematic → Ambient sound → Loop URL.
-  Use the **full** URL, `https://YOUR_DOMAIN/loader-sfx.mp3`, not
-  `/loader-sfx.mp3`. Both the page's sound loader and the admin's Test button
-  only play http(s) URLs, and the server rejects a relative Loop URL on save.
-  Uploading the file to R2 and using that URL works too.
+- **Enter text font**: Admin → Enter Screen → Enter text font. Type a Google
+  Fonts family name on its own, or upload a font file (.woff2 / .woff / .otf /
+  .ttf) to R2 and paste its full `https://` link plus a name for it. Fonts
+  loaded from another domain need the R2 CORS rule in §5.
+- **Favicon**: either keep `favicon.png` in the repo (served from the site), or
+  upload an image to R2 and paste its link in Admin → Settings → Public Site
+  Features → Favicon. The repo file is the better default: browsers, Google and
+  link previews read it before any script runs, while the admin setting only
+  takes over once the page loads (a returning visitor's browser remembers it).
+  Use both if you like — the repo file as the fallback, R2 to change it
+  without a deploy.
 
 ---
 
@@ -231,10 +237,10 @@ colours, flowing) and Gummy (a colour per letter). The style comes from
 Lanyard, or from the bot (`discord-banner-live`) if Lanyard doesn't carry it.
 Discord's display-name fonts aren't public, so the font itself isn't copied.
 
-**Admin videos.** Whatever plays on the admin Home page fades out on the other
-sections. With both videos set, the Hero / Overview video plays on Home and the
-Main Background Video on every other section. With only the Main video, it
-plays on Home only.
+**Admin video.** Settings has one Background Video. It plays behind the admin
+Home page, with its sound (mute it with the speaker button in the top bar), and
+fades out on every other section. The separate Hero / Overview video setting was
+removed.
 
 **Hamburger → footer link.** The burger icon, its overlay and its script are
 gone. The one remaining link is in the footer, and shows the site's own domain.

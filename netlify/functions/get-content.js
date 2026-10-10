@@ -116,23 +116,19 @@ const DEFAULT_FAVORITE_GAME = { name: '', coverUrl: '', blurb: '', url: '' };
 const SECTION_IDS = ['discord', 'about', 'interests', 'favgame', 'watch', 'socials'];
 const DEFAULT_SECTIONS = SECTION_IDS.map((id) => ({ id, enabled: true }));
 
-const DEFAULT_FEATURES = { showDiscordPresence: true, showViews: true, turnstileGate: false };
+const DEFAULT_FEATURES = { showDiscordPresence: true, showViews: true, turnstileGate: false, faviconUrl: '' };
 const DEFAULT_SOCIALS = [];
 
 const DEFAULT_ENTER_SCREEN = {
   enabled: true,
-  style: 'classic',           // 'classic' gradient click-to-enter | 'modern' cinematic loader
   text: 'click to enter',
   gradColor1: '#3c0a1e',
   gradColor2: '#000000',
   gradAngle: 135,
-  loaderAccent: '#a97bff',
-  loaderFont: '',
-  loaderFontUrl: '',
-  sfxEnabled: false,
-  sfxVolume: 60,
-  sfxAmbientUrl: '',
+  font: '',                   // enter-text font: a Google Fonts family name…
+  fontUrl: '',                // …or a self-hosted file (e.g. on R2)
 };
+const ENTER_SCREEN_FIELDS = Object.keys(DEFAULT_ENTER_SCREEN);
 
 const DEFAULT_GUILD_TAG = { enabled: false, text: '', iconUrl: '' };
 
@@ -252,7 +248,9 @@ exports.handler = async (event) => {
     sections: normalizeSections(obj(b.sections).sections || DEFAULT_SECTIONS),
     features: { ...DEFAULT_FEATURES, ...obj(b.features) },
     socials: Array.isArray(obj(b.socials).socials) ? obj(b.socials).socials : DEFAULT_SOCIALS,
-    enterScreen: { ...DEFAULT_ENTER_SCREEN, ...obj(b['enter-screen']) },
+    // Only the click-to-enter fields (older saves may carry the removed
+    // cinematic loader's settings).
+    enterScreen: Object.fromEntries(ENTER_SCREEN_FIELDS.map((k) => [k, k in obj(b['enter-screen']) ? obj(b['enter-screen'])[k] : DEFAULT_ENTER_SCREEN[k]])),
     guildTag: { ...DEFAULT_GUILD_TAG, ...obj(b['guild-tag']) },
     // Whose Discord profile both pages show (via Lanyard). Not a secret — it's
     // in every Lanyard request anyway — and keeping it in the env var means
