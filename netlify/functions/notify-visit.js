@@ -2,8 +2,7 @@
 //
 // Pings a Discord channel (DISCORD_WEBHOOK_URL) when a real visitor enters the
 // site: IP address, country, device, browser and OS.
-// The public site skips it for the owner's own devices (/?owner). Here,
-// requests from other sites, bots and (while the entry gate is on) visitors
+// Requests from other sites, bots and (while the entry gate is on) visitors
 // without a Turnstile pass are dropped, and each client pings at most once per
 // 30 minutes (plus a global cap) so the channel can't be flooded.
 const { getStore } = require('@netlify/blobs');
