@@ -222,8 +222,6 @@ Only two things in `index.html` are still typed in by hand, both optional:
    - UI Editor, including **Color & glow → Site accent**
    - Discord Badges
    - Enter Screen
-7. On the friend's own devices, visit `/?owner` once. Their visits then don't
-   count as views or ping Discord. `/?owner=0` undoes it.
 
 ---
 

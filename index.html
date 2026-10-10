@@ -119,15 +119,7 @@
         s.textContent = '.soundbar-section{display:none !important;}';
         document.head.appendChild(s);
       }
-      // Owner opt-out of visit pings: visiting /?owner sets a per-device flag
-      // so the site never Discord-pings the owner's own visits (/?owner=0 to
-      // clear it). Visitors never set this, so they're tracked normally.
       var __qp = location.search.toLowerCase();
-      if (__qp.indexOf('owner') !== -1) {
-        if (/owner=(0|off|false)/.test(__qp)) localStorage.removeItem('arpOwner');
-        else localStorage.setItem('arpOwner', '1');
-      }
-      window.__arpOwner = localStorage.getItem('arpOwner') === '1';
       // Manual performance override for testing the low-power look: ?perf=lite
       // forces blur-free opaque cards + no background drift on any device.
       if (/[?&]perf=lite/.test(__qp)) window.__lowPerf = true;
@@ -4598,9 +4590,6 @@ async function refreshViewDisplay() {
 // Server also filters bot UAs in case anything slips past.
 const VIEW_COOLDOWN_MS = 3 * 60 * 60 * 1000;  // 3 hours
 async function logVisitOnce() {
-  // The owner's own visits never count (matches the visit ping) — otherwise
-  // testing your own site inflates the view total. Set /?owner on your devices.
-  if (window.__arpOwner) return;
   const lastView = parseInt(localStorage.getItem('viewLastTs') || '0', 10) || 0;
   const now = Date.now();
   if (now - lastView < VIEW_COOLDOWN_MS) return;  // still on cooldown
@@ -4622,11 +4611,9 @@ async function logVisitOnce() {
     body: JSON.stringify({ type: 'view' }),
   }).catch(() => {});
 
-  // Discord visit ping (device only, no IP) — skipped for the owner's own
-  // devices and dropped server-side for bots.
-  if (!window.__arpOwner) {
-    fetch('/.netlify/functions/notify-visit', { method: 'POST' }).catch(() => {});
-  }
+  // Discord visit ping. The server reads the IP, country and device from the
+  // request headers, and drops bots.
+  fetch('/.netlify/functions/notify-visit', { method: 'POST' }).catch(() => {});
 }
 
 // ════ SESSION DURATION TRACKING ════
