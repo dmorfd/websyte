@@ -327,6 +327,33 @@
   .segmented{display:flex;padding:2px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);gap:2px;}
   .segmented button{flex:1;padding:4px 10px;border-radius:6px;font-size:10.5px;font-weight:500;color:rgba(253,245,236,0.5);letter-spacing:.02em;white-space:nowrap;}
   .segmented button.active{background:rgba(253,245,236,0.12);color:var(--ink);font-weight:600;}
+  /* Schedule day row — mirrors the public site's Schedule section. Colours
+     and font arrive as --sched-* variables from the UI Editor settings. */
+  .sched-row{position:relative;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));font-family:var(--sched-font,'JetBrains Mono',monospace);}
+  .sched-row::before{content:'';position:absolute;left:calc(100% / 14);right:calc(100% / 14);top:calc(14px + 10px + 9px);height:1px;background:linear-gradient(90deg,transparent,var(--sched-off) 8%,var(--sched-off) 92%,transparent);}
+  .sched-cell{position:relative;display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 2px 10px;border-radius:10px;border:0;background:none;color:inherit;font:inherit;cursor:default;-webkit-tap-highlight-color:transparent;}
+  button.sched-cell{cursor:pointer;}
+  button.sched-cell:focus-visible{outline:2px solid var(--sched-on);outline-offset:2px;}
+  .sched-n{height:14px;line-height:14px;font-size:10px;font-weight:600;letter-spacing:.16em;color:var(--sched-text);transition:color .2s;}
+  .sched-d{position:relative;width:18px;height:18px;border-radius:50%;background:#0b0710;border:1.5px solid var(--sched-off);transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s,background .25s,border-color .25s;}
+  .sched-num{font-size:11px;line-height:1;color:var(--sched-text);opacity:.75;}
+  .sched-cell.on .sched-n,.sched-cell.on .sched-num{color:var(--ink);opacity:1;}
+  .sched-cell.on .sched-d{background:radial-gradient(circle at 35% 35%,color-mix(in srgb,var(--sched-on) 55%,#fff),var(--sched-on) 70%);border-color:var(--sched-on);box-shadow:0 0 0 3px color-mix(in srgb,var(--sched-on) 16%,transparent),0 0 14px color-mix(in srgb,var(--sched-on) 55%,transparent);}
+  .sched-cell.today{background:linear-gradient(180deg,color-mix(in srgb,var(--sched-on) 12%,transparent),transparent 85%);}
+  .sched-cell.today .sched-n{color:var(--sched-on);}
+  .sched-cell.today::after{content:'';position:absolute;bottom:1px;left:50%;transform:translateX(-50%);width:16px;height:2px;border-radius:2px;background:var(--sched-on);}
+  button.sched-cell:hover .sched-d{transform:scale(1.15);}
+  .sched-row.tiles{gap:6px;}
+  .sched-row.tiles::before{display:none;}
+  .sched-row.tiles .sched-cell{gap:8px;padding:12px 2px 11px;border:1px solid var(--sched-off);background:rgba(255,255,255,0.025);transition:transform .25s cubic-bezier(.2,.8,.2,1),border-color .25s,box-shadow .25s;}
+  .sched-row.tiles .sched-d{width:9px;height:9px;border-width:1px;}
+  .sched-row.tiles .sched-cell.on{border-color:color-mix(in srgb,var(--sched-on) 55%,transparent);background:linear-gradient(180deg,color-mix(in srgb,var(--sched-on) 20%,transparent),color-mix(in srgb,var(--sched-on) 6%,transparent));box-shadow:0 0 16px -6px color-mix(in srgb,var(--sched-on) 70%,transparent);}
+  .sched-row.tiles .sched-cell.today{outline:1px solid var(--sched-on);outline-offset:2px;}
+  .sched-row.tiles .sched-cell.today::after{display:none;}
+  .sched-row.tiles button.sched-cell:hover{transform:translateY(-2px);}
+  .sched-row.tiles button.sched-cell:hover .sched-d{transform:none;}
+  .sched-quick{display:flex;gap:6px;flex-wrap:wrap;}
+  @media (max-width:520px){ .sched-n{font-size:8.5px;letter-spacing:.08em;} .sched-row.tiles{gap:3px;} }
   @keyframes favNameFlow{0%{background-position:200% 50%;}100%{background-position:0% 50%;}}
 
   .swatch{width:34px;height:30px;border-radius:7px;border:1px solid var(--line-2);flex-shrink:0;cursor:pointer;padding:0;background:none;}
@@ -603,6 +630,7 @@ const Ico = {
 const NAV = [
   { id: "analytics", label: "Analytics", icon: Ico.share },
   { id: "content", label: "Content Editor", icon: Ico.doc },
+  { id: "schedule", label: "Schedule", icon: Ico.doc },
   { id: "ui", label: "UI Editor", icon: Ico.ui },
   { id: "presets", label: "Presets", icon: Ico.layers },
   { id: "badges", label: "Discord Badges", icon: Ico.badge },
@@ -1815,6 +1843,156 @@ function ContentEditor({ data, reload }) {
 }
 
 /* ═══════════════ UI EDITOR ═══════════════ */
+/* ═══════════════ SCHEDULE ═══════════════ */
+// This week's availability. Stored as {days: [7 × bool, Sunday first],
+// weekOf: that Sunday 'YYYY-MM-DD', note}; the public site's Schedule section
+// draws the same row with the same colours (UI Editor → Schedule).
+const SCHED_NAMES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+const SCHED_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const SCHED_DAY_MS = 86400000;
+const pad2 = (n) => String(n).padStart(2, "0");
+// Sunday of the current week, in this computer's time zone.
+function thisWeekOf(now = new Date()) {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+  return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+}
+const weekStartMs = (weekOf) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(weekOf || "");
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null;
+};
+const fmtUtc = (t, opts) => new Date(t).toLocaleDateString("en-US", { timeZone: "UTC", ...opts });
+function weekRange(weekOf) {
+  const start = weekStartMs(weekOf);
+  if (start === null) return "";
+  const end = start + 6 * SCHED_DAY_MS;
+  const same = fmtUtc(start, { month: "short" }) === fmtUtc(end, { month: "short" });
+  return fmtUtc(start, { month: "short", day: "numeric" }) + " – " + fmtUtc(end, same ? { day: "numeric" } : { month: "short", day: "numeric" });
+}
+// The public site's default "available" colour: the site accent, lightened
+// the same way applySharedAccent derives --gold.
+function accentShade(hex, p) {
+  const c = isHex(hex) ? hex : "#e7a6e0";
+  const n = parseInt(c.slice(1), 16);
+  return "#" + [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+    .map((v) => Math.min(255, Math.max(0, Math.round(v + (255 - v) * p))).toString(16).padStart(2, "0")).join("");
+}
+// Staged or saved theme values → what the row is drawn with.
+function scheduleLook(t) {
+  return {
+    style: t.schedStyle === "tiles" ? "tiles" : "dots",
+    on: isHex(t.schedOnColor) ? t.schedOnColor : accentShade(t.siteAccent, 0.16),
+    off: isHex(t.schedOffColor) ? t.schedOffColor : "rgba(255,235,235,0.24)",
+    text: isHex(t.schedTextColor) ? t.schedTextColor : "rgba(255,200,210,0.52)",
+    font: (t.schedFont || "").trim(),
+    fontUrl: (t.schedFontUrl || "").trim(),
+  };
+}
+
+function ScheduleRow({ days, weekOf, look, onToggle }) {
+  const start = weekStartMs(weekOf);
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  useEffect(() => {
+    if (!look.font) return;
+    if (isFontUrl(look.fontUrl)) loadUrlFont(look.fontUrl);
+    else ensureAdminFont(look.font);
+  }, [look.font, look.fontUrl]);
+  const style = { "--sched-on": look.on, "--sched-off": look.off, "--sched-text": look.text };
+  // Like the public site, a font needs its family name (the URL alone isn't used).
+  if (look.font) style["--sched-font"] = fontStack(look.font, look.fontUrl, "'JetBrains Mono', monospace");
+  return (
+    <div className={"sched-row" + (look.style === "tiles" ? " tiles" : "")} style={style}>
+      {SCHED_NAMES.map((n, i) => {
+        const t = start === null ? null : start + i * SCHED_DAY_MS;
+        const on = !!days[i];
+        const cls = "sched-cell" + (on ? " on" : "") + (t === today ? " today" : "");
+        const inner = (
+          <>
+            <span className="sched-n">{n}</span>
+            <span className="sched-d" />
+            <span className="sched-num">{t === null ? "" : fmtUtc(t, { day: "numeric" })}</span>
+          </>
+        );
+        return onToggle
+          ? <button key={n} type="button" className={cls} onClick={() => onToggle(i)} role="switch" aria-checked={on} aria-label={SCHED_FULL[i] + (on ? " — available" : " — away")} title={SCHED_FULL[i]}>{inner}</button>
+          : <div key={n} className={cls}>{inner}</div>;
+      })}
+    </div>
+  );
+}
+
+function SchedulePage({ data, reload }) {
+  const sch = data.schedule || {};
+  const savedDays = () => {
+    const d = (data.schedule || {}).days;
+    return Array.isArray(d) && d.length === 7 ? d.map((x) => x === true) : [false, false, false, false, false, false, false];
+  };
+  const [days, setDays] = useState(savedDays);
+  const [note, setNote] = useState(sch.note || "");
+  const [busy, setBusy] = useState(false);
+  const [status, showStatus] = useSaveStatus();
+  useEffect(() => {
+    setDays(savedDays());
+    setNote((data.schedule || {}).note || "");
+  }, [data.schedule]);
+
+  const week = thisWeekOf();
+  const published = typeof sch.weekOf === "string" ? sch.weekOf : "";
+  const look = scheduleLook(data.theme || {});
+  const count = days.filter(Boolean).length;
+  const sectionOff = Array.isArray(data.sections) && data.sections.some((x) => x && x.id === "schedule" && x.enabled === false);
+  const pick = (fn) => setDays(SCHED_NAMES.map((_, i) => fn(i)));
+
+  const publish = async () => {
+    setBusy(true);
+    try {
+      await apiUpdate({ type: "schedule", days, note: note.trim(), weekOf: week });
+      showStatus("published ✓");
+      if (typeof reload === "function") reload();
+    } catch (e) { showStatus(e.message || "publish failed", "err"); }
+    setBusy(false);
+  };
+  const reset = () => { setDays(savedDays()); setNote(sch.note || ""); showStatus("changes reset"); };
+
+  let state;
+  if (!published) state = <>Not published yet — the Schedule section stays hidden on the site until you publish.</>;
+  else if (published === week) state = <><span style={{ color: "#5fd38d" }}>✓ Live:</span> the site shows this week ({weekRange(week)}).</>;
+  else state = <><span style={{ color: "#f3c969" }}>Out of date:</span> the site still shows the week of {weekRange(published)}. Publish to set it for this week.</>;
+
+  return (
+    <div className="sec-page">
+      <EditorHead title="Schedule" meta="Pick the days you'll be online this week, then publish." status={status} onReset={reset} onPublish={publish} busy={busy} />
+      <div className="glass" style={{ marginBottom: 14 }}>
+        <div className="grp-head" style={{ justifyContent: "space-between" }}>
+          <span className="grp-title">This week · {weekRange(week)}</span>
+          <span className="field-sub">{count} of 7 days available</span>
+        </div>
+        <ScheduleRow days={days} weekOf={week} look={look} onToggle={(i) => setDays((prev) => prev.map((v, k) => (k === i ? !v : v)))} />
+        <div className="field-sub" style={{ textAlign: "center", margin: "12px 0 16px" }}>click a day to switch it between available and away</div>
+        <div className="sched-quick" style={{ justifyContent: "center", marginBottom: 18 }}>
+          <button className="btn btn-tiny" onClick={() => pick(() => true)}>Every day</button>
+          <button className="btn btn-tiny" onClick={() => pick((i) => i >= 1 && i <= 5)}>Weekdays</button>
+          <button className="btn btn-tiny" onClick={() => pick((i) => i === 0 || i === 6)}>Weekends</button>
+          <button className="btn btn-tiny" onClick={() => pick(() => false)}>Clear</button>
+        </div>
+        <div className="lbl-row">
+          <span className="lbl">Note <span className="field-sub">optional, shown under the days</span></span>
+          <span className="lbl-count">{note.length}/140</span>
+        </div>
+        <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. usually on in the evenings" maxLength={140} aria-label="Schedule note" />
+      </div>
+      <div className="glass">
+        <div className="grp-title" style={{ marginBottom: 10 }}>On the site</div>
+        <div className="ctl-stack" style={{ gap: 8 }}>
+          <div style={{ fontSize: 12, color: "var(--ink-2)" }}>{state}</div>
+          {sectionOff ? <div style={{ fontSize: 12, color: "#f3c969" }}>The Schedule section is switched off in UI Editor → Sections.</div> : null}
+          <div className="field-sub">Colors, style and font: UI Editor → Schedule. Position on the page: UI Editor → Sections.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UIEditor({ data, reload }) {
   const t = data.theme || {};
   const identity = useSiteIdentity();
@@ -1823,8 +2001,8 @@ function UIEditor({ data, reload }) {
   const [favC2, setFavC2] = useState(t.favGameColor2 || "#c0392b");
   const [favGrad, setFavGrad] = useState(t.favGameGradient !== false);
   const [favAnim, setFavAnim] = useState(t.favGameAnimate !== false);
-  const SECTION_LABELS = { discord: "Discord Profile", about: "About Me", interests: "Interests", favgame: "Favorite Game", games: "Games I Like", watch: "Watch", socials: "Find Me Here" };
-  const DEFAULT_SECTIONS = ["discord", "about", "interests", "favgame", "games", "watch", "socials"].map((id) => ({ id, enabled: true }));
+  const SECTION_LABELS = { discord: "Discord Profile", schedule: "Schedule", about: "About Me", interests: "Interests", favgame: "Favorite Game", games: "Games I Like", watch: "Watch", socials: "Find Me Here" };
+  const DEFAULT_SECTIONS = ["discord", "schedule", "about", "interests", "favgame", "games", "watch", "socials"].map((id) => ({ id, enabled: true }));
   // Drop ids for sections that no longer exist (e.g. from an older saved order).
   const knownSections = (list) => (Array.isArray(list) ? list.filter((s) => s && SECTION_LABELS[s.id]) : []);
   const [sections, setSections] = useState(knownSections(data.sections).length ? knownSections(data.sections) : DEFAULT_SECTIONS);
@@ -1925,6 +2103,20 @@ function UIEditor({ data, reload }) {
   const [bgZoom, setBgZoom] = useState(t.bgZoom === true);
   const [bgStars, setBgStars] = useState(t.bgStars === true);
   const [bgStarColor, setBgStarColor] = useState(safeHex(t.bgStarColor, "#b98cff"));
+  const [schedStyle, setSchedStyle] = useState(t.schedStyle === "tiles" ? "tiles" : "dots");
+  const [schedOn, setSchedOn] = useState(t.schedOnColor || "");
+  const [schedOff, setSchedOff] = useState(t.schedOffColor || "");
+  const [schedText, setSchedText] = useState(t.schedTextColor || "");
+  const [schedFont, setSchedFont] = useState(t.schedFont || "");
+  const [schedFontUrl, setSchedFontUrl] = useState(t.schedFontUrl || "");
+  const syncSched = (tt) => {
+    setSchedStyle(tt.schedStyle === "tiles" ? "tiles" : "dots");
+    setSchedOn(tt.schedOnColor || "");
+    setSchedOff(tt.schedOffColor || "");
+    setSchedText(tt.schedTextColor || "");
+    setSchedFont(tt.schedFont || "");
+    setSchedFontUrl(tt.schedFontUrl || "");
+  };
   const [status, showStatus] = useSaveStatus();
 
   // Re-sync from App data after save+reload — fixes the stale-data revert bug.
@@ -1953,6 +2145,7 @@ function UIEditor({ data, reload }) {
     setBgZoom(tt.bgZoom === true);
     setBgStars(tt.bgStars === true);
     setBgStarColor(safeHex(tt.bgStarColor, "#b98cff"));
+    syncSched(tt);
   }, [data.theme]);
 
   const tintEnabled = uiStyle === "minimal";
@@ -1963,6 +2156,9 @@ function UIEditor({ data, reload }) {
     if (!isHex(siteAccent)) { showStatus("invalid site accent hex", "err"); return; }
     if (frostedTint && !isHex(frostedTint)) { showStatus("invalid tint hex", "err"); return; }
     if (bgStarColor && !isHex(bgStarColor)) { showStatus("invalid star color hex", "err"); return; }
+    for (const [v, what] of [[schedOn, "available"], [schedOff, "away"], [schedText, "label"]]) {
+      if (v && !isHex(v)) { showStatus("invalid schedule " + what + " color hex", "err"); return; }
+    }
     try {
       await apiUpdate({
         type: "theme",
@@ -1977,6 +2173,8 @@ function UIEditor({ data, reload }) {
         textColor: bodyColor || "",
         frostedTint: frostedTint || "",
         bgZoom, bgStars, bgStarColor,
+        schedStyle, schedOnColor: schedOn, schedOffColor: schedOff, schedTextColor: schedText,
+        schedFont: schedFont.trim(), schedFontUrl: schedFontUrl.trim(),
       });
       showStatus("saved ✓");
       if (typeof reload === "function") reload();
@@ -2010,6 +2208,7 @@ function UIEditor({ data, reload }) {
     setBgZoom(tt.bgZoom === true);
     setBgStars(tt.bgStars === true);
     setBgStarColor(safeHex(tt.bgStarColor, "#b98cff"));
+    syncSched(tt);
     setSections(knownSections(data.sections).length ? knownSections(data.sections) : DEFAULT_SECTIONS);
     showStatus("changes reset");
   };
@@ -2209,6 +2408,47 @@ function UIEditor({ data, reload }) {
             <div className="ctl-row" style={{ opacity: favGrad ? 1 : 0.45 }}>
               <span>Animation <span className="field-sub">left-to-right sweep</span></span>
               <div className={"switch " + (favAnim && favGrad ? "on" : "")} onClick={() => favGrad && setFavAnim(!favAnim)} role="switch" aria-checked={favAnim && favGrad}><div className="knob" /></div>
+            </div>
+          </div>
+        </div>
+
+        {/* SCHEDULE */}
+        <div className="glass">
+          <div className="grp-title" style={{ marginBottom: 14 }}>Schedule</div>
+          <div className="preview-box" style={{ padding: "30px 12px 14px", marginBottom: 14 }}>
+            <div className="preview-tag">Preview</div>
+            <ScheduleRow
+              days={(data.schedule && data.schedule.weekOf && Array.isArray(data.schedule.days)) ? data.schedule.days : [false, true, true, false, true, true, false]}
+              weekOf={thisWeekOf()}
+              look={scheduleLook({ schedStyle, schedOnColor: schedOn, schedOffColor: schedOff, schedTextColor: schedText, schedFont, schedFontUrl, siteAccent })}
+            />
+          </div>
+          <div className="ctl-stack">
+            <div className="ctl-row">
+              <span>Style</span>
+              <div className="segmented" style={{ flex: "0 0 auto" }}>
+                {[{ id: "dots", l: "Dots" }, { id: "tiles", l: "Tiles" }].map((o) => (
+                  <button key={o.id} className={schedStyle === o.id ? "active" : ""} onClick={() => setSchedStyle(o.id)}>{o.l}</button>
+                ))}
+              </div>
+            </div>
+            {[
+              { l: "Available", sub: "blank = site accent", v: schedOn, set: setSchedOn, fb: accentShade(siteAccent, 0.16) },
+              { l: "Away", sub: "blank = default", v: schedOff, set: setSchedOff, fb: "#5a4a50" },
+              { l: "Day labels", sub: "blank = default", v: schedText, set: setSchedText, fb: "#c9a0aa" },
+            ].map((c) => (
+              <div className="ctl-row" key={c.l}>
+                <span>{c.l} <span className="field-sub">{c.sub}</span></span>
+                <div className="color-row" style={{ flex: "0 0 auto" }}>
+                  <input type="color" value={isHex(c.v) ? c.v : c.fb} onChange={(e) => c.set(e.target.value)} className="swatch" aria-label={"Schedule " + c.l.toLowerCase() + " color"} />
+                  <input className="input" style={{ width: 84 }} value={c.v} onChange={(e) => c.set(e.target.value)} placeholder="default" maxLength={7} />
+                  <button className="btn btn-tiny" onClick={() => c.set("")}>Clear</button>
+                </div>
+              </div>
+            ))}
+            <div>
+              <div className="lbl">Font <span className="field-sub">blank = site font</span></div>
+              <FontPicker name={schedFont} url={schedFontUrl} onName={setSchedFont} onUrl={setSchedFontUrl} />
             </div>
           </div>
         </div>
@@ -3793,6 +4033,7 @@ function App() {
     if (active === "home") content = <CinematicHome data={data} />;
     else if (active === "analytics") content = <Overview data={data} />;
     else if (active === "content") content = <ContentEditor data={data} reload={reload} />;
+    else if (active === "schedule") content = <SchedulePage data={data} reload={reload} />;
     else if (active === "ui") content = <UIEditor data={data} reload={reload} />;
     else if (active === "presets") content = <Presets data={data} reload={reload} />;
     else if (active === "badges") content = <DiscordBadges data={data} reload={reload} />;

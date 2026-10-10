@@ -259,6 +259,15 @@ goes through the same "leave the site?" check as the favorite game. Show, hide
 or move the section in UI Editor → Sections. It stays hidden until a game is
 added.
 
+**Schedule.** Admin → Schedule: click the days you'll be online this week
+(Sunday to Saturday), add an optional note, then Publish. The site shows the
+week's dates with today highlighted, right under the Discord card by default.
+Each publish is for the current week; if a new week starts before the next
+publish, the site keeps showing the old dates ("week of …") and the admin page
+says it's out of date. Style (dots or tiles), colours and font are in UI Editor
+→ Schedule; blank colours follow the site accent. Show, hide or move it in UI
+Editor → Sections. It stays hidden until the first publish.
+
 **Social link images.** Each social link has an "image" switch in Content
 Editor → F Social links; off hides the image on the side of that card.
 
