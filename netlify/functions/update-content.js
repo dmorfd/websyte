@@ -217,6 +217,9 @@ const FEATURES_SPEC = {
   showViews: (v) => bool(v, 'Profile Views'),
   turnstileGate: (v) => bool(v, 'Cloudflare Turnstile Gate'),
   faviconUrl: (v) => url(v, 'Favicon URL', { relative: true }),
+  // Font for all public-site text except the display handle.
+  siteFont: (v) => fontName(v, 'Site font'),
+  siteFontUrl: (v) => url(v, 'Site font URL'),
 };
 
 const ADMIN_THEME_SPEC = {
@@ -364,6 +367,7 @@ const HANDLERS = {
           description: text(s.description, `Social link ${i + 1} description`, 120),
           iconUrl: url(s.iconUrl, `Social link ${i + 1} icon URL`, { relative: true }),
           linkUrl: url(s.linkUrl, `Social link ${i + 1} profile URL`) || fail(`Social link ${i + 1} needs a profile URL.`),
+          showIcon: s.showIcon !== false,   // the image on the card's side
         };
       });
       return { socials };

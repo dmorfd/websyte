@@ -116,7 +116,7 @@ const DEFAULT_FAVORITE_GAME = { name: '', coverUrl: '', blurb: '', url: '' };
 const SECTION_IDS = ['discord', 'about', 'interests', 'favgame', 'watch', 'socials'];
 const DEFAULT_SECTIONS = SECTION_IDS.map((id) => ({ id, enabled: true }));
 
-const DEFAULT_FEATURES = { showDiscordPresence: true, showViews: true, turnstileGate: false, faviconUrl: '' };
+const DEFAULT_FEATURES = { showDiscordPresence: true, showViews: true, turnstileGate: false, faviconUrl: '', siteFont: '', siteFontUrl: '' };
 const DEFAULT_SOCIALS = [];
 
 const DEFAULT_ENTER_SCREEN = {

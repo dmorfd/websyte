@@ -1586,7 +1586,7 @@ function ContentEditor({ data, reload }) {
       await apiUpdate({ type: "youtube", url: youtube });
       await apiUpdate({ type: "video-bg", url: siteVideo });
       await apiUpdate({ type: "favorite-game", name: favGame.name || "", coverUrl: favGame.coverUrl || "", blurb: favGame.blurb || "", url: favGame.url || "" });
-      const cleanSoc = socials.map((s) => ({ name: (s.name || "").trim(), description: (s.description || "").trim(), iconUrl: (s.iconUrl || "").trim(), linkUrl: (s.linkUrl || "").trim() })).filter((s) => s.name && s.linkUrl);
+      const cleanSoc = socials.map((s) => ({ name: (s.name || "").trim(), description: (s.description || "").trim(), iconUrl: (s.iconUrl || "").trim(), linkUrl: (s.linkUrl || "").trim(), showIcon: s.showIcon !== false })).filter((s) => s.name && s.linkUrl);
       await apiUpdate({ type: "socials", socials: cleanSoc });
       showPub("published ✓"); afterSave();
     } catch (e) { showPub(e.message, "err"); }
@@ -1759,12 +1759,17 @@ function ContentEditor({ data, reload }) {
                 <span className="rep-grip">⠿</span>
                 <input className="input" style={{ flex: "1 1 110px", minWidth: 100 }} placeholder="name" value={s.name || ""} onChange={(e) => setSocials(socials.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))} />
                 <input className="input" style={{ flex: "1.6 1 150px", minWidth: 130, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} placeholder="https://profile-url" value={s.linkUrl || ""} onChange={(e) => setSocials(socials.map((x, idx) => idx === i ? { ...x, linkUrl: e.target.value } : x))} />
-                <input className="input" style={{ flex: "1.2 1 130px", minWidth: 120, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} placeholder="https://icon-url" value={s.iconUrl || ""} onChange={(e) => setSocials(socials.map((x, idx) => idx === i ? { ...x, iconUrl: e.target.value } : x))} />
+                <input className="input" style={{ flex: "1.2 1 130px", minWidth: 120, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, opacity: s.showIcon === false ? 0.45 : 1 }} placeholder="https://icon-url" value={s.iconUrl || ""} onChange={(e) => setSocials(socials.map((x, idx) => idx === i ? { ...x, iconUrl: e.target.value } : x))} />
+                <label title="Show the image on the side of this link" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "rgba(253,245,236,0.6)", flex: "0 0 auto", cursor: "pointer" }}>
+                  <div className={"switch " + (s.showIcon !== false ? "on" : "")} role="switch" aria-checked={s.showIcon !== false} aria-label={"Show image for " + (s.name || "link " + (i + 1))}
+                    onClick={() => setSocials(socials.map((x, idx) => idx === i ? { ...x, showIcon: x.showIcon === false } : x))}><div className="knob" /></div>
+                  image
+                </label>
                 <button className="rep-x" onClick={() => setSocials(socials.filter((_, idx) => idx !== i))} title="remove">✕</button>
               </div>
             ))}
           </div>
-          <button className="add-row" style={{ maxWidth: 220 }} onClick={() => socials.length < 5 && setSocials([...socials, { name: "", description: "", iconUrl: "", linkUrl: "" }])} disabled={socials.length >= 5}>+ Add social link</button>
+          <button className="add-row" style={{ maxWidth: 220 }} onClick={() => socials.length < 5 && setSocials([...socials, { name: "", description: "", iconUrl: "", linkUrl: "", showIcon: true }])} disabled={socials.length >= 5}>+ Add social link</button>
         </div>
 
       </div>
@@ -3099,6 +3104,9 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
   const [adminBgVideoEnabled, setAdminBgVideoEnabled] = useState(!!(v.adminUrl));
   const [favicon, setFavicon] = useState(f.faviconUrl || "");
   const [faviconStatus, showFaviconStatus] = useSaveStatus();
+  const [siteFont, setSiteFont] = useState(f.siteFont || "");
+  const [siteFontUrl, setSiteFontUrl] = useState(f.siteFontUrl || "");
+  const [siteFontStatus, showSiteFontStatus] = useSaveStatus();
   const [featStatus, showFeatStatus] = useSaveStatus();
   const [adminBgVideoStatus, showAdminBgVideoStatus] = useSaveStatus();
 
@@ -3141,6 +3149,17 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
     // heroUrl is cleared too: the admin has one background video now.
     try { await apiUpdate({ type: "video-bg", adminUrl, heroUrl: "" }); if (typeof reload === "function") reload(); showAdminBgVideoStatus("saved ✓"); }
     catch (e) { showAdminBgVideoStatus(e.message, "err"); }
+  };
+  const saveSiteFont = async () => {
+    const name = siteFont.trim(), url = siteFontUrl.trim();
+    if (name && !/^[A-Za-z0-9 \-_]+$/.test(name)) { showSiteFontStatus("font name: letters, numbers, spaces, - and _ only", "err"); return; }
+    if (url && !/^https?:\/\//i.test(url)) { showSiteFontStatus("font URL must be a full https:// link", "err"); return; }
+    if (url && !name) { showSiteFontStatus("give the font a name too", "err"); return; }
+    try {
+      await apiUpdate({ type: "features", siteFont: name, siteFontUrl: url });
+      if (typeof reload === "function") reload();
+      showSiteFontStatus("saved ✓");
+    } catch (e) { showSiteFontStatus(e.message, "err"); }
   };
   const saveFavicon = async () => {
     const url = favicon.trim();
@@ -3300,6 +3319,20 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
           </div>
 
           <div className="field" style={{ padding: 14 }}>
+            <div className="field-title">Site Font</div>
+            <div className="field-sub" style={{ marginBottom: 8 }}>the font for all the text on the site except your display handle (the enter / loading screens keep their own font settings). Blank = the original fonts</div>
+            <FontPicker name={siteFont} url={siteFontUrl} onName={setSiteFont} onUrl={setSiteFontUrl} />
+            <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line-2)", fontFamily: fontStack(siteFont, siteFontUrl, "'Noto Serif JP', serif"), fontSize: 14 }}>
+              The quick brown fox jumps over the lazy dog · 0123456789
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 6 }}>
+              <span className={"save-status " + siteFontStatus.kind}>{siteFontStatus.msg}</span>
+              <button className="btn btn-tiny" onClick={() => { setSiteFont(""); setSiteFontUrl(""); }}>Clear</button>
+              <button className="btn btn-primary btn-tiny" onClick={saveSiteFont}>Save site font</button>
+            </div>
+          </div>
+
+          <div className="field" style={{ padding: 14 }}>
             <div className="field-row">
               <div>
                 <div className="field-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><Ico.video /> Background Video</div>
@@ -3369,7 +3402,7 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
           </div>
 
           <div className="field">
-            <div className="field-title" style={{ textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: ".16em" }}>Hero Subtitle Font</div>
+            <div className="field-title" style={{ textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: ".16em" }}>Hero Subtitle Font <span className="field-sub" style={{ marginLeft: 6, textTransform: "none", letterSpacing: 0 }}>(the line under the welcome message)</span></div>
             <FontPicker name={subFont} url={subFontUrl} onName={setSubFont} onUrl={setSubFontUrl} />
             <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line-2)" }}>
               <div style={{ fontFamily: fontStack(subFont, subFontUrl, "'Geist', sans-serif"), fontSize: 14 }}>☆ subtitle preview ☆</div>

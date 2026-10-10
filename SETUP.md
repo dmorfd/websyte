@@ -242,6 +242,16 @@ colours, flowing) and Gummy (a colour per letter). The style comes from
 Lanyard, or from the bot (`discord-banner-live`) if Lanyard doesn't carry it.
 Discord's display-name fonts aren't public, so the font itself isn't copied.
 
+**Fonts.** Admin → Settings → Public Site Features → **Site Font** sets the font
+for all the public site's text except the display handle (the enter and loading
+screens keep their own font settings). The admin's Hero Subtitle Font only
+styles the line under the welcome message. Any font can be a Google Fonts name
+or a font file on R2; font files get their own internal name, so naming one
+like a built-in font is fine.
+
+**Social link images.** Each social link has an "image" switch in Content
+Editor → F Social links; off hides the image on the side of that card.
+
 **Admin video.** Settings has one Background Video. It plays behind the admin
 Home page, with its sound (mute it with the speaker button in the top bar), and
 fades out on every other section. The separate Hero / Overview video setting was
