@@ -661,6 +661,40 @@ function safeHex(s, fallback) { return isHex(s) ? s : fallback; }
 // Google Fonts `family=` (no weight spec) is valid for every family, including
 // single-weight ones, so any name the user types just works.
 const HEAD_FONTS = /^(Instrument Serif|Geist|JetBrains Mono)$/i;
+// Fonts loaded from a URL (e.g. R2) get a family name of their own, derived
+// from the URL, so a file named like a built-in font ("Instrument Serif",
+// "Geist") can't be shadowed by it. Loads are shared and report success.
+const urlFontFamily = (url) => {
+  let h = 5381;
+  for (let i = 0; i < url.length; i++) h = ((h * 33) ^ url.charCodeAt(i)) >>> 0;
+  return "UrlFont" + h.toString(36);
+};
+const isFontUrl = (url) => /^https?:\/\//i.test((url || "").trim());
+const __fontLoads = {};
+function loadUrlFont(url) {
+  url = (url || "").trim();
+  if (!isFontUrl(url) || !window.FontFace) return Promise.resolve("none");
+  if (!__fontLoads[url]) {
+    __fontLoads[url] = new FontFace(urlFontFamily(url), `url(${JSON.stringify(url)})`).load()
+      .then((f) => { document.fonts.add(f); return "ok"; })
+      .catch((err) => {
+        console.warn(`[admin font] couldn't load ${url} — ${(err && err.message) || err}. Most common cause: the R2 bucket's CORS policy doesn't allow this site.`);
+        delete __fontLoads[url];
+        return "error";
+      });
+  }
+  return __fontLoads[url];
+}
+// CSS font-family list for a name + optional URL: the file first, then the name.
+const fontStack = (name, url, fallback) => {
+  const parts = [];
+  if (isFontUrl(url)) parts.push(`'${urlFontFamily(url.trim())}'`);
+  const n = (name || "").trim().replace(/['"\\;{}()<>]/g, "");
+  if (n) parts.push(`'${n}'`);
+  parts.push(fallback);
+  return parts.join(", ");
+};
+
 function ensureAdminFont(name) {
   if (typeof name !== "string") return;
   name = name.trim();
@@ -679,6 +713,15 @@ function ensureAdminFont(name) {
 // debounced before we try to fetch it, so we don't hit Google once per
 // keystroke while it's half-typed.
 function FontPicker({ name, url, onName, onUrl, hint }) {
+  const [fileState, setFileState] = useState("");
+  useEffect(() => {
+    const u = (url || "").trim();
+    if (!isFontUrl(u)) { setFileState(""); return; }
+    let cancelled = false;
+    setFileState("loading");
+    const t = setTimeout(() => loadUrlFont(u).then((s) => { if (!cancelled) setFileState(s); }), 500);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [url]);
   useEffect(() => {
     const n = (name || "").trim();
     if (n.length < 3 || url) return;            // too short to be real, or self-hosted
@@ -689,6 +732,14 @@ function FontPicker({ name, url, onName, onUrl, hint }) {
     <div className="ctl-stack">
       <input className="input" value={name} onChange={(e) => onName(e.target.value)} placeholder="font family name — e.g. Orbitron" maxLength={60} />
       <input className="input" value={url} onChange={(e) => onUrl(e.target.value)} placeholder="https://…/font.woff2 (optional)" maxLength={500} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
+      {fileState === "loading" ? <div className="field-sub">checking the font file…</div> : null}
+      {fileState === "ok" ? <div className="field-sub" style={{ color: "#5fd38d" }}>✓ font file loaded</div> : null}
+      {fileState === "error" ? (
+        <div className="field-sub" style={{ color: "#ff7a7a" }}>
+          ✗ couldn't load this font file. Check the link opens in a new tab, and that the R2 bucket allows this site:
+          Cloudflare → R2 → your bucket → Settings → CORS policy (allow GET from this domain).
+        </div>
+      ) : null}
       <div className="field-sub">a Google Fonts family name works on its own; add a URL to self-host (.woff2/.woff/.otf/.ttf)</div>
       {hint ? <div className="field-sub">{hint}</div> : null}
     </div>
@@ -2678,19 +2729,6 @@ function Presets({ data, reload }) {
 }
 
 /* ═══════════════ ENTER SCREEN ═══════════════ */
-// Load a font for an admin preview: a self-hosted file via FontFace, or a
-// Google Fonts family through ensureAdminFont.
-function usePreviewFont(name, url) {
-  useEffect(() => {
-    const n = (name || "").trim(), u = (url || "").trim();
-    if (!n || !/^https?:\/\//i.test(u)) return;
-    const t = setTimeout(() => {
-      try { new FontFace(n, `url(${JSON.stringify(u)})`).load().then((f) => document.fonts.add(f)).catch(() => {}); } catch {}
-    }, 500);
-    return () => clearTimeout(t);
-  }, [name, url]);
-}
-
 function EnterScreen({ data, reload }) {
   const es = data.enterScreen || {};
   const [enabled, setEnabled] = useState(es.enabled !== false);
@@ -2708,8 +2746,6 @@ function EnterScreen({ data, reload }) {
   // Classic only: the enter text's typeface (Google Fonts name, or an R2 file).
   const [textFont, setTextFont] = useState(es.font || "");
   const [textFontUrl, setTextFontUrl] = useState(es.fontUrl || "");
-  usePreviewFont(textFont, textFontUrl);
-  usePreviewFont(ldFont, ldFontUrl);
   // ...and its ambient loop.
   const [sfxOn, setSfxOn] = useState(es.sfxEnabled === true);
   const [sfxVol, setSfxVol] = useState(typeof es.sfxVolume === "number" ? es.sfxVolume : 60);
@@ -2939,7 +2975,7 @@ function EnterScreen({ data, reload }) {
                   ));
                 })()}
                 <div style={{ position: "relative", textAlign: "center" }}>
-                  <div style={{ fontFamily: (ldFont.trim() ? `'${ldFont.trim()}', ` : "") + "'Michroma', sans-serif", fontSize: 20, letterSpacing: "0.12em", color: "#fff", textShadow: "0 0 14px rgba(255,255,255,0.35)" }}>Welcome</div>
+                  <div style={{ fontFamily: fontStack(ldFont, ldFontUrl, "'Michroma', sans-serif"), fontSize: 20, letterSpacing: "0.12em", color: "#fff", textShadow: "0 0 14px rgba(255,255,255,0.35)" }}>Welcome</div>
                 </div>
                 <div style={{ position: "absolute", left: "8%", right: "8%", bottom: 54, height: 1,
                   background: `linear-gradient(90deg, transparent, ${isHex(accent) ? accent : "#a97bff"} 20%, #fff 50%, ${isHex(accent) ? accent : "#a97bff"} 80%, transparent)`,
@@ -2953,7 +2989,7 @@ function EnterScreen({ data, reload }) {
                 <div style={{ position: "absolute", inset: 0, background: "radial-gradient(360px 200px at 50% 60%, rgba(230,74,82,0.1), transparent 65%)" }} />
                 <div style={{
                   fontSize: 22, fontWeight: 650, letterSpacing: "0.04em", position: "relative",
-                  fontFamily: (textFont.trim() ? `'${textFont.trim()}', ` : "") + "'Noto Serif JP', serif",
+                  fontFamily: fontStack(textFont, textFontUrl, "'Noto Serif JP', serif"),
                   backgroundImage: `linear-gradient(${angle}deg, ${c1}, ${c2})`,
                   WebkitBackgroundClip: "text", backgroundClip: "text",
                   color: "transparent", WebkitTextFillColor: "transparent",
@@ -3012,43 +3048,15 @@ function applyAdminTheme(t) {
   // loads) can show the saved gradient instead of the defaults.
   try { localStorage.setItem("admin_accent_cache", JSON.stringify({ accent: acc, accent2: acc2 })); } catch {}
 
-  // Build @font-face for any user-supplied font URLs.
-  // ALSO load via FontFace API and log success/failure so the user has
-  // visibility when something goes wrong (CORS, 404, wrong format, etc).
+  // Font files (hero / subtitle URLs) load through loadUrlFont under their own
+  // family names; FontPicker in Settings shows whether each one loaded.
   let fontFaces = "";
-  const loadFontViaApi = (name, url) => {
-    if (!window.FontFace || !name || !url) return;
-    try {
-      const face = new FontFace(name, `url(${JSON.stringify(url)})`);
-      face.load()
-        .then((loaded) => {
-          document.fonts.add(loaded);
-          console.log(`[admin font] ✓ loaded "${name}" from ${url}`);
-        })
-        .catch((err) => {
-          console.warn(`[admin font] ✗ failed to load "${name}" from ${url}`);
-          console.warn(`  reason: ${err.message || err}`);
-          console.warn(`  most common cause: R2 CORS not configured. The font file must allow cross-origin access.`);
-          console.warn(`  fix: in your Cloudflare R2 bucket → Settings → CORS Policy, add a rule allowing your admin domain (or "*").`);
-        });
-    } catch (err) {
-      console.warn(`[admin font] FontFace API error for "${name}":`, err);
-    }
-  };
-  if (t.heroFontUrl && t.heroFont) {
-    const fmt = fontFormatFromUrl(t.heroFontUrl);
-    fontFaces += `@font-face{font-family:'${t.heroFont}';src:url('${t.heroFontUrl}')${fmt ? ` format('${fmt}')` : ""};font-display:swap;}`;
-    loadFontViaApi(t.heroFont, t.heroFontUrl);
-  }
+  if (isFontUrl(t.heroFontUrl)) loadUrlFont(t.heroFontUrl);
   // No URL means it's a Google Fonts family name — inject the <link> or the
   // title just falls back to whatever the <head> stylesheet already loaded.
   if (!t.heroFontUrl) ensureAdminFont(t.heroFont);
   if (!t.subFontUrl) ensureAdminFont(t.subFont);
-  if (t.subFontUrl && t.subFont) {
-    const fmt = fontFormatFromUrl(t.subFontUrl);
-    fontFaces += `@font-face{font-family:'${t.subFont}';src:url('${t.subFontUrl}')${fmt ? ` format('${fmt}')` : ""};font-display:swap;}`;
-    loadFontViaApi(t.subFont, t.subFontUrl);
-  }
+  if (isFontUrl(t.subFontUrl)) loadUrlFont(t.subFontUrl);
 
   let bgCss = "";
   if (isHex(t.bg)) {
@@ -3069,8 +3077,8 @@ function applyAdminTheme(t) {
     :root{
       --accent:${acc} !important;
       --accent-2:${acc2} !important;
-      --hero-font: ${JSON.stringify(t.heroFont || "Instrument Serif")};
-      --sub-font:  ${JSON.stringify(t.subFont  || "Geist")};
+      --hero-font: ${fontStack(t.heroFont || "Instrument Serif", t.heroFontUrl, "'Instrument Serif'")};
+      --sub-font:  ${fontStack(t.subFont || "Geist", t.subFontUrl, "'Geist'")};
     }
     /* nav-item active visuals are driven by base CSS (blue/black) — accent only used for icons buttons */
     .intro-title{font-family:var(--hero-font),serif !important;font-weight:400 !important;}
@@ -3355,15 +3363,17 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
             <div className="field-title" style={{ textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: ".16em" }}>Hero Title Font</div>
             <FontPicker name={heroFont} url={heroFontUrl} onName={setHeroFont} onUrl={setHeroFontUrl} />
             <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line-2)" }}>
-              <div style={{ fontFamily: (heroFont || "").trim() ? `'${heroFont.trim()}', serif` : "'Instrument Serif', serif", fontWeight: 700, fontSize: 26, lineHeight: 1.1 }}>Admin Panel</div>
+              <div style={{ fontFamily: fontStack(heroFont, heroFontUrl, "'Instrument Serif', serif"), fontWeight: 700, fontSize: 26, lineHeight: 1.1 }}>Admin Panel</div>
             </div>
             <div className="field-sub">Leave blank for the default, Instrument Serif.</div>
           </div>
 
           <div className="field">
             <div className="field-title" style={{ textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: ".16em" }}>Hero Subtitle Font</div>
-            <input className="input" value={subFont} onChange={(e) => setSubFont(e.target.value)} placeholder="font family name" />
-            <input className="input" value={subFontUrl} onChange={(e) => setSubFontUrl(e.target.value)} placeholder="https://…/font.woff2 (optional)" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
+            <FontPicker name={subFont} url={subFontUrl} onName={setSubFont} onUrl={setSubFontUrl} />
+            <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line-2)" }}>
+              <div style={{ fontFamily: fontStack(subFont, subFontUrl, "'Geist', sans-serif"), fontSize: 14 }}>☆ subtitle preview ☆</div>
+            </div>
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center" }}>

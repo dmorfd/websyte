@@ -24,14 +24,18 @@
       var root = document.documentElement;
       name = (typeof name === 'string' ? name : '').replace(/['"\\;{}()<>]/g, '').trim();
       if (!name) { root.style.removeProperty('--enter-font'); return; }
-      var key = 'enterfont-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      // A font FILE gets a family name of its own (from its URL), so a file
+      // named like a font the page already loads can't be shadowed by it.
+      var isFile = typeof url === 'string' && /^https?:\/\//i.test(url);
+      var fam = isFile ? window.__urlFontFamily(url) : name;
+      var key = 'enterfont-' + fam.toLowerCase().replace(/[^a-z0-9]+/g, '-');
       if (!document.getElementById(key)) {
         var el;
-        if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+        if (isFile) {
           var m = /\.(woff2|woff|otf|ttf)(\?|#|$)/i.exec(url);
           var fmt = m ? ({ woff2: 'woff2', woff: 'woff', otf: 'opentype', ttf: 'truetype' })[m[1].toLowerCase()] : '';
           el = document.createElement('style');
-          el.textContent = "@font-face{font-family:'" + name + "';src:url('" + url.replace(/['\\]/g, encodeURIComponent) + "')" +
+          el.textContent = "@font-face{font-family:'" + fam + "';src:url('" + url.replace(/['\\]/g, encodeURIComponent) + "')" +
             (fmt ? " format('" + fmt + "')" : '') + ';font-display:swap;}';
         } else {
           el = document.createElement('link');
@@ -41,7 +45,12 @@
         el.id = key;
         document.head.appendChild(el);
       }
-      root.style.setProperty('--enter-font', "'" + name + "'");
+      root.style.setProperty('--enter-font', isFile ? "'" + fam + "','" + name + "'" : "'" + name + "'");
+    };
+    window.__urlFontFamily = function (url) {
+      var h = 5381;
+      for (var i = 0; i < url.length; i++) h = ((h * 33) ^ url.charCodeAt(i)) >>> 0;
+      return 'UrlFont' + h.toString(36);
     };
     // CRITICAL: runs BEFORE any stylesheet so the right intro is the ONLY one
     // ever painted. Stamps <html data-intro> from the choice applyEnterScreen()
@@ -3407,30 +3416,37 @@ function enterSiteNow(overlayEl, customExit) {
 // from Google Fonts (the bare `family=` form is valid for every family, and
 // we only ever need weight 400 here); a custom family can be self-hosted by
 // also supplying a direct font-file URL.
+// Returns the CSS font-family list to use. A font FILE gets a family name of
+// its own (from its URL) so one named like a font the page already loads
+// (e.g. "Michroma") can't be shadowed by it.
 function ensureLoaderFont(name, url) {
-  if (typeof name !== 'string') return;
-  name = name.trim();
-  if (!name) return;
+  if (typeof name !== 'string') return '';
+  name = name.trim().replace(/['"\\;{}()<>]/g, '');
+  if (!name) return '';
+  const isFile = !!url && /^https?:\/\//i.test(url);
+  const fam = isFile ? window.__urlFontFamily(url) : name;
+  const stack = isFile ? "'" + fam + "','" + name + "'" : "'" + name + "'";
   // Already in the document's main stylesheet link — nothing to fetch.
-  if (/^(Michroma|JetBrains Mono|DM Sans|Share Tech Mono|Noto Serif JP)$/i.test(name)) return;
-  const key = 'ldfont-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  if (document.getElementById(key)) return;
-  if (url && /^https?:\/\//i.test(url)) {
+  if (!isFile && /^(Michroma|JetBrains Mono|DM Sans|Share Tech Mono|Noto Serif JP)$/i.test(name)) return stack;
+  const key = 'ldfont-' + fam.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  if (document.getElementById(key)) return stack;
+  if (isFile) {
     // Self-hosted file → @font-face. Format hint is optional; browsers sniff it.
     const m = /\.(woff2|woff|otf|ttf)(\?|$)/i.exec(url);
     const fmt = m ? ({ woff2: 'woff2', woff: 'woff', otf: 'opentype', ttf: 'truetype' })[m[1].toLowerCase()] : '';
     const st = document.createElement('style');
     st.id = key;
-    st.textContent = "@font-face{font-family:'" + name.replace(/'/g, '') + "';src:url('" + url + "')" +
+    st.textContent = "@font-face{font-family:'" + fam + "';src:url('" + url.replace(/['\\]/g, encodeURIComponent) + "')" +
       (fmt ? " format('" + fmt + "')" : '') + ';font-display:swap;}';
     document.head.appendChild(st);
-    return;
+    return stack;
   }
   const link = document.createElement('link');
   link.id = key;
   link.rel = 'stylesheet';
   link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(name).replace(/%20/g, '+') + '&display=swap';
   document.head.appendChild(link);
+  return stack;
 }
 
 function setupModernLoader(es) {
@@ -3447,8 +3463,8 @@ function setupModernLoader(es) {
   // ── wordmark typeface ──
   function applyFont(name, url) {
     if (typeof name !== 'string' || !name.trim()) return;
-    ensureLoaderFont(name, url);
-    root.style.setProperty('--ld-font', "'" + name.trim().replace(/'/g, '') + "'");
+    const stack = ensureLoaderFont(name, url);
+    if (stack) root.style.setProperty('--ld-font', stack);
   }
   applyFont(es.loaderFont, es.loaderFontUrl);
   root.__ldSetFont = applyFont;   // late settings can restyle the wordmark
