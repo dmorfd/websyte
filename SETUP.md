@@ -3,7 +3,7 @@
 This copy keeps the following.
 
 **Public site**
-- The click-to-enter screen (classic gradient), now with a custom font option for its text. The cinematic loader was removed.
+- The enter/loading screen, in both the classic gradient and the cinematic loader. The classic screen's text can now use a custom font.
 - The hero card: avatar, name, live Discord status and the typewriter bio.
 - The audio player.
 - The Discord presence card with interests.
@@ -48,7 +48,7 @@ This copy keeps the following.
 | 13 | `netlify/functions/get-guild-preview.js` | Server preview for the guild-tag pill next to the username |
 | 14 | `netlify/functions/increment-view.js` | Global view counter |
 | 15 | `netlify/functions/log-event.js` | View, click and session events for Analytics |
-| 16 | `netlify/functions/notify-visit.js` | Discord webhook ping on a real visit (`DISCORD_WEBHOOK_URL` only) |
+| 16 | `netlify/functions/notify-visit.js` | Discord webhook ping on a real visit (`DISCORD_WEBHOOK_URL` only): IP address, country, device, browser and OS |
 | 17 | `netlify/functions/bot-filter.js` | Bot detection, user-agent parsing, the cross-site check and the gate-pass cookie |
 | 18 | `netlify/functions/lib/admin-auth.js` | Constant-time admin-key check plus the brute-force lockout |
 | 19 | `netlify/functions/lib/rate-limit.js` | Blob-backed fixed-window rate limiter |
@@ -56,7 +56,7 @@ This copy keeps the following.
 | 21 | `favicon.png` | **Copy in from your site**, then replace the artwork |
 | 22 | `cover.png` | **Copy in.** Keep the filename and replace the artwork (see §4) |
 | 23–25 | `discord-icon.png`, `spotify-icon.png`, `steam-icon.png` | **Copy in** unchanged. They're social-link icon URLs you paste in the admin |
-| 26 | ~~`loader-sfx.mp3`~~ | **No longer needed** — it was the cinematic loader's sound, and the loader is gone |
+| 26 | `loader-sfx.mp3` | **Copy in** unchanged. The cinematic loader's ambient loop (see §4) |
 | 27 | `SETUP.md` | This file |
 
 The 6 binary assets (rows 21–26) aren't in the repo. Copy them from your site
@@ -85,7 +85,7 @@ redeploy.
 | `ADMIN_KEY` | `lib/admin-auth.js` (every admin endpoint goes through it) | The admin password. Make it long and random, e.g. `openssl rand -base64 32`. Surrounding whitespace is trimmed. If it's missing, admin endpoints answer 500 (they fail closed) |
 | `DISCORD_BOT_TOKEN` | `discord-banner-live.js`, `get-guild-preview.js` | Bot token only, no `Bot ` prefix. Without it the banner falls back to the admin's static banner, and the guild preview uses the public widget, if the server has one enabled |
 | `DISCORD_USER_ID` | `get-content.js` (both pages), `discord-banner-live.js`, `get-guild-preview.js` | The friend's numeric user ID. **This one value decides whose Discord profile the site shows**: both pages read it from `get-content` and ask Lanyard for that user's avatar, name, Nitro name effect, guild tag, status and Spotify. The guild preview only looks up the server in this user's guild tag |
-| `DISCORD_WEBHOOK_URL` | `notify-visit.js` | Must be a `https://discord.com/api/webhooks/…` URL. If it's unset, visit pings are skipped silently |
+| `DISCORD_WEBHOOK_URL` | `notify-visit.js` | Must be a `https://discord.com/api/webhooks/…` URL. If it's unset, visit pings are skipped silently. Pings include the visitor's **IP address**, so post them to a private channel only |
 | `TURNSTILE_SECRET_KEY` | `verify-turnstile.js`, `bot-filter.js` | Verifies Turnstile tokens, and also signs the HMAC gate-pass cookie. Rotating it signs every visitor out of the gate (they just solve it again) |
 | `NETLIFY_SITE_ID` | every function: Blobs storage, rate limits and the lockout | Site configuration → Site details → Site ID |
 | `NETLIFY_BLOBS_TOKEN` | every function, as above | Personal access token. Pick **no expiry**, or a long one with a reminder to rotate it. When it expires, every save, the view counter, analytics and admin login stop working (they fail with 503) |
@@ -147,17 +147,22 @@ Only three things in `index.html` are still typed in by hand:
 - **`discord-icon.png`, `spotify-icon.png`, `steam-icon.png`**: not referenced
   in code by design. In Content Editor → F Social links, paste them as icon
   URLs, e.g. `/discord-icon.png`.
-- **Enter text font**: Admin → Enter Screen → Enter text font. Type a Google
-  Fonts family name on its own, or upload a font file (.woff2 / .woff / .otf /
-  .ttf) to R2 and paste its full `https://` link plus a name for it. Fonts
-  loaded from another domain need the R2 CORS rule in §5.
+- **`loader-sfx.mp3`**: Enter Screen → Cinematic → Ambient sound → Loop URL.
+  Use the **full** URL, `https://YOUR_DOMAIN/loader-sfx.mp3`, not
+  `/loader-sfx.mp3`. Both the page's sound loader and the admin's Test button
+  only play http(s) URLs, and the server rejects a relative Loop URL on save.
+  Uploading the file to R2 and using that URL works too.
+- **Enter text font** (classic screen): Admin → Enter Screen → Enter text
+  font. Type a Google Fonts family name on its own, or upload a font file
+  (.woff2 / .woff / .otf / .ttf) to R2 and paste its full `https://` link plus
+  a name for it. The cinematic loader keeps its own "Welcome" font setting.
+  Fonts loaded from another domain need the R2 CORS rule in §5.
 - **Favicon**: either keep `favicon.png` in the repo (served from the site), or
   upload an image to R2 and paste its link in Admin → Settings → Public Site
   Features → Favicon. The repo file is the better default: browsers, Google and
   link previews read it before any script runs, while the admin setting only
-  takes over once the page loads (a returning visitor's browser remembers it).
-  Use both if you like — the repo file as the fallback, R2 to change it
-  without a deploy.
+  takes over once the page loads. Use both if you like — the repo file as the
+  fallback, R2 to change it without a deploy.
 
 ---
 

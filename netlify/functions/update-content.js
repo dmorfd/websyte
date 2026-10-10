@@ -195,6 +195,7 @@ const GUILD_TAG_SPEC = {
 
 const ENTER_SCREEN_SPEC = {
   enabled: (v) => bool(v, 'Intro gate'),
+  style: (v) => oneOf(v, 'Style', ['classic', 'modern']),
   text: (v) => text(v, 'Enter text', 100, { required: true }),
   gradColor1: (v) => hex(v, 'Gradient color 1'),
   gradColor2: (v) => hex(v, 'Gradient color 2'),
@@ -202,6 +203,13 @@ const ENTER_SCREEN_SPEC = {
   font: (v) => fontName(v, 'Enter text font'),
   // A full http(s) URL to the font file (e.g. on R2) — loaded by @font-face.
   fontUrl: (v) => url(v, 'Enter text font URL'),
+  loaderAccent: (v) => hex(v, 'Loader accent colour'),
+  loaderFont: (v) => fontName(v, '"Welcome" font'),
+  // The public loader only loads absolute http(s) URLs for these two.
+  loaderFontUrl: (v) => url(v, '"Welcome" font URL'),
+  sfxEnabled: (v) => bool(v, 'Ambient sound'),
+  sfxVolume: (v) => num(v, 'Ambient volume', 0, 100),
+  sfxAmbientUrl: (v) => url(v, 'Loop URL'),
 };
 
 const FEATURES_SPEC = {

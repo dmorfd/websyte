@@ -1,14 +1,14 @@
 // POST /.netlify/functions/notify-visit
 //
 // Pings a Discord channel (DISCORD_WEBHOOK_URL) when a real visitor enters the
-// site. Device-level only — country, device, browser and OS; never the IP.
+// site: IP address, country, device, browser and OS.
 // The public site skips it for the owner's own devices (/?owner). Here,
 // requests from other sites, bots and (while the entry gate is on) visitors
 // without a Turnstile pass are dropped, and each client pings at most once per
 // 30 minutes (plus a global cap) so the channel can't be flooded.
 const { getStore } = require('@netlify/blobs');
 const { isBot, isCrossSite, blockedByGate, userAgent, parseUserAgent, BROWSER_NAMES, OS_NAMES, DEVICE_NAMES, DISCORD_USER_AGENT: USER_AGENT } = require('./bot-filter');
-const { rateLimit } = require('./lib/rate-limit');
+const { rateLimit, clientIp } = require('./lib/rate-limit');
 const { countryName, countryFlag } = require('./lib/countries');
 const { countryOf } = require('./log-event');
 
@@ -53,12 +53,16 @@ exports.handler = async (event) => {
 
   const ua = parseUserAgent(userAgent(event));
   const cc = countryOf(event);
+  // The visitor's address as Netlify saw it. Only characters an IPv4/IPv6
+  // address can contain, so header junk can't inject Markdown into the embed.
+  const ip = clientIp(event).replace(/[^0-9a-fA-F.:]/g, '').slice(0, 45) || 'unknown';
   const payload = {
     allowed_mentions: { parse: [] },
     embeds: [{
       title: 'New visitor',
       color: 0xe7a6e0,
       fields: [
+        { name: 'IP address', value: '`' + ip + '`', inline: false },
         { name: 'Country', value: `${countryFlag(cc)} ${countryName(cc)}`, inline: true },
         { name: 'Device', value: DEVICE_NAMES[ua.device] || 'Other', inline: true },
         { name: 'Browser', value: `${BROWSER_NAMES[ua.browser] || 'Other'} · ${OS_NAMES[ua.os] || 'Other'}`, inline: true },
