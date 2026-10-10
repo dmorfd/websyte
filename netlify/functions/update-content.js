@@ -144,6 +144,12 @@ const THEME_SPEC = {
   bgZoom: (v) => bool(v, 'Slow zoom'),
   bgStars: (v) => bool(v, 'Starfield overlay'),
   bgStarColor: (v) => hex(v, 'Star color'),
+  schedStyle: (v) => oneOf(v, 'Schedule style', ['dots', 'tiles']),
+  schedOnColor: (v) => hex(v, 'Schedule available color', { allowEmpty: true }),
+  schedOffColor: (v) => hex(v, 'Schedule away color', { allowEmpty: true }),
+  schedTextColor: (v) => hex(v, 'Schedule label color', { allowEmpty: true }),
+  schedFont: (v) => fontName(v, 'Schedule font'),
+  schedFontUrl: (v) => url(v, 'Schedule font URL'),
   typeSpeed: (v) => num(v, 'Type speed', 5, 500, { integer: true }),
   deleteSpeed: (v) => num(v, 'Delete speed', 5, 500, { integer: true }),
   holdTime: (v) => num(v, 'Hold delay', 100, 30000, { integer: true }),
@@ -401,6 +407,21 @@ const HANDLERS = {
         };
       });
       return { socials };
+    },
+  },
+  // This week's availability: seven on/off days from Sunday, the Sunday they
+  // start on, and an optional short note.
+  schedule: {
+    blob: 'schedule',
+    build: (body) => {
+      if (!Array.isArray(body.days) || body.days.length !== 7) fail('Schedule needs all seven days.');
+      const days = body.days.map((d, i) => bool(d, `Schedule day ${i + 1}`));
+      const m = typeof body.weekOf === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(body.weekOf);
+      const start = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null;
+      if (!start || start.toISOString().slice(0, 10) !== body.weekOf || start.getUTCDay() !== 0) {
+        fail('Schedule week must be a Sunday date (YYYY-MM-DD).');
+      }
+      return { days, weekOf: body.weekOf, note: text(body.note, 'Schedule note', 140) };
     },
   },
   song: {

@@ -140,7 +140,7 @@
        so a changed setting still takes effect on this same load. */
     /* Site font (Admin → Settings → Public Site Features): every piece of text
        except the display handle and the intro screens, which have their own. */
-    html.site-font body *:not(#handleName):not(#enterScreen *):not(#loaderScreen *){
+    html.site-font body *:not(#handleName):not(#enterScreen *):not(#loaderScreen *):not(.sched-own-font *){
       font-family:var(--site-font),'Noto Serif JP',sans-serif !important;
     }
     /* …and the display handle too, unless that's switched off in the admin. */
@@ -988,6 +988,129 @@
       .game-slot:hover .game-art img{transform:none;}
     }
 
+    /* ══ SCHEDULE ══
+       This week's availability: seven days on one row, Sunday first. "Dots"
+       joins the days with a hairline track; "Tiles" gives each day its own
+       box. Colours, label colour and font come from UI Editor → Schedule;
+       blank settings follow the site accent and body text colour. */
+    :root{
+      --sched-on:var(--gold);
+      --sched-off:rgba(255,235,235,.24);
+      --sched-text:var(--muted);
+    }
+    .schedule-section{width:100%;}
+    .schedule-card{
+      position:relative;width:100%;padding:1.05rem 1.1rem 1.15rem;
+      background:var(--glass);border:1px solid var(--glass-border);
+      backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    }
+    .sched-head{
+      display:flex;align-items:center;justify-content:space-between;gap:.75rem;
+      margin-bottom:1rem;flex-wrap:wrap;
+    }
+    .sched-week{
+      font-family:'Noto Serif JP',serif;font-size:.76rem;letter-spacing:.04em;
+      color:var(--text);
+    }
+    .sched-week small{
+      font-family:'DM Sans',sans-serif;font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;
+      color:var(--sched-text);margin-right:.5rem;
+    }
+    .sched-legend{
+      display:inline-flex;align-items:center;gap:.4rem;
+      font-family:'DM Sans',sans-serif;font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;
+      color:var(--sched-text);
+    }
+    .sched-key{
+      width:7px;height:7px;border-radius:50%;flex:0 0 auto;
+      border:1.5px solid var(--sched-off);
+    }
+    .sched-key:not(:first-child){margin-left:.45rem;}
+    .sched-key.on{background:var(--sched-on);border-color:var(--sched-on);box-shadow:0 0 6px color-mix(in srgb,var(--sched-on) 60%,transparent);}
+    .sched-days{
+      position:relative;list-style:none;margin:0;padding:0;
+      display:grid;grid-template-columns:repeat(7,minmax(0,1fr));
+    }
+    /* the track behind the dots, centre of the first day to centre of the last */
+    .sched-days::before{
+      content:'';position:absolute;left:calc(100% / 14);right:calc(100% / 14);
+      top:calc(.9rem + .55rem + 7px);height:1px;
+      background:linear-gradient(90deg,transparent,var(--sched-off) 8%,var(--sched-off) 92%,transparent);
+    }
+    .sched-day{
+      position:relative;display:flex;flex-direction:column;align-items:center;gap:.55rem;
+      padding:0 .1rem .5rem;border-radius:10px;
+    }
+    .sched-dname{
+      height:.9rem;line-height:.9rem;
+      font-family:'DM Sans',sans-serif;font-size:.62rem;font-weight:500;letter-spacing:.16em;
+      color:var(--sched-text);transition:color .3s ease;
+    }
+    .sched-dot{
+      position:relative;width:14px;height:14px;border-radius:50%;flex:0 0 auto;
+      background:rgba(10,4,8,.85);border:1.5px solid var(--sched-off);
+      transition:transform .3s cubic-bezier(.2,.8,.2,1),box-shadow .3s ease;
+    }
+    .sched-date{
+      font-family:'Noto Serif JP',serif;font-size:.7rem;line-height:1;
+      color:var(--sched-text);opacity:.75;
+    }
+    .sched-day.on .sched-dname{color:var(--text);}
+    .sched-day.on .sched-dot{
+      background:radial-gradient(circle at 35% 35%,color-mix(in srgb,var(--sched-on) 55%,#fff),var(--sched-on) 70%);
+      border-color:var(--sched-on);
+      box-shadow:0 0 0 3px color-mix(in srgb,var(--sched-on) 16%,transparent),0 0 14px color-mix(in srgb,var(--sched-on) 55%,transparent);
+    }
+    .sched-day.on .sched-date{opacity:1;color:var(--text);}
+    /* today: a soft lit column and the day name in the accent */
+    .sched-day.today{background:linear-gradient(180deg,color-mix(in srgb,var(--sched-on) 12%,transparent),transparent 85%);}
+    .sched-day.today .sched-dname{color:var(--sched-on);}
+    .sched-day.today::after{
+      content:'';position:absolute;bottom:.05rem;left:50%;transform:translateX(-50%);
+      width:14px;height:2px;border-radius:2px;background:var(--sched-on);
+      box-shadow:0 0 8px color-mix(in srgb,var(--sched-on) 70%,transparent);
+    }
+    @media (hover:hover){
+      .sched-day:hover .sched-dot{transform:scale(1.18);}
+    }
+    .sched-note{
+      margin-top:.9rem;padding-top:.8rem;border-top:1px solid rgba(255,235,235,.07);
+      font-family:'Noto Serif JP',serif;font-size:.8rem;line-height:1.75;text-align:center;
+      color:var(--text-color);white-space:pre-wrap;word-break:break-word;
+    }
+    /* "Tiles": each day is its own small box, lit when available */
+    .schedule-card.sched-tiles .sched-days{gap:.4rem;}
+    .schedule-card.sched-tiles .sched-days::before{display:none;}
+    .schedule-card.sched-tiles .sched-day{
+      gap:.45rem;padding:.7rem .1rem .65rem;
+      border:1px solid var(--sched-off);background:rgba(255,255,255,.025);
+      transition:transform .3s cubic-bezier(.2,.8,.2,1),border-color .3s ease,box-shadow .3s ease;
+    }
+    .schedule-card.sched-tiles .sched-dot{width:8px;height:8px;border-width:1px;}
+    .schedule-card.sched-tiles .sched-day.on{
+      border-color:color-mix(in srgb,var(--sched-on) 55%,transparent);
+      background:linear-gradient(180deg,color-mix(in srgb,var(--sched-on) 20%,transparent),color-mix(in srgb,var(--sched-on) 6%,transparent));
+      box-shadow:0 0 16px -6px color-mix(in srgb,var(--sched-on) 70%,transparent),inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .schedule-card.sched-tiles .sched-day.on .sched-dot{box-shadow:0 0 8px color-mix(in srgb,var(--sched-on) 70%,transparent);}
+    .schedule-card.sched-tiles .sched-day.today{outline:1px solid var(--sched-on);outline-offset:2px;}
+    .schedule-card.sched-tiles .sched-day.today::after{display:none;}
+    @media (hover:hover){
+      .schedule-card.sched-tiles .sched-day:hover{transform:translateY(-2px);}
+      .schedule-card.sched-tiles .sched-day:hover .sched-dot{transform:none;}
+    }
+    /* A schedule font of its own (UI Editor → Schedule) wins over the site font. */
+    .schedule-card.sched-own-font *{font-family:var(--sched-font),'DM Sans',sans-serif !important;}
+    @media (max-width:480px){
+      .schedule-card{padding:.9rem .7rem 1rem;}
+      .sched-dname{font-size:.56rem;letter-spacing:.1em;}
+      .schedule-card.sched-tiles .sched-days{gap:.25rem;}
+      .sched-legend{font-size:.55rem;}
+    }
+    @media (prefers-reduced-motion: reduce){
+      .sched-dot,.sched-day{transition:none;}
+    }
+
     /* Scroll reveal */
     .scroll-reveal{opacity:0;transform:translateY(32px);transition:opacity 1s cubic-bezier(.22,1,.36,1),transform 1s cubic-bezier(.22,1,.36,1);width:100%;}
     .scroll-reveal.visible{opacity:1;transform:translateY(0);}
@@ -1489,7 +1612,7 @@
        box-shadow cleanly takes over.
        ═══════════════════════════════════════════════════════════════ */
     .about-card,.interest-card,.dprof-card,.favgame-card,
-    .yt-card,.link-card,.games-card{
+    .yt-card,.link-card,.games-card,.schedule-card{
       border-radius:14px;
       box-shadow:
         0 14px 34px -16px rgba(0,0,0,.62),
@@ -1504,7 +1627,7 @@
     .dprof-banner{border-radius:14px 14px 0 0;}
     /* A touch warmer, more luminous edge than the flat crimson border. */
     .about-card,.interest-card,.dprof-card,
-    .yt-card,.link-card,.games-card{
+    .yt-card,.link-card,.games-card,.schedule-card{
       border-color:rgba(224,120,140,.26);
     }
     /* Give the left accent bars a soft gold-crimson bloom so the cards feel lit. */
@@ -1870,6 +1993,22 @@
           <a class="dprof-add" id="dprofAdd" target="_blank" rel="noopener noreferrer">Add on Discord →</a>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- 0b. SCHEDULE — this week's availability (Admin → Schedule) -->
+  <div class="scroll-reveal schedule-section" id="scheduleSection" style="display:none;transition-delay:.04s;">
+    <p class="section-label" style="margin-bottom:.75rem;">schedule</p>
+    <div class="schedule-card" id="scheduleCard">
+      <div class="sched-head">
+        <span class="sched-week" id="schedWeek"></span>
+        <span class="sched-legend" aria-hidden="true">
+          <span class="sched-key on"></span>available
+          <span class="sched-key"></span>away
+        </span>
+      </div>
+      <ol class="sched-days" id="schedDays"></ol>
+      <p class="sched-note" id="schedNote" style="display:none;"></p>
     </div>
   </div>
 
@@ -2254,6 +2393,7 @@ async function loadContent() {
     // ══ FAVORITE GAME ══
     applyFavoriteGame(data.favoriteGame);
     applyGames(data.games);
+    applySchedule(data.schedule);
 
     // ══ SECTION ORDER / VISIBILITY ══
     applySections(data.sections);
@@ -2440,6 +2580,7 @@ const SECTION_SELECTORS = {
   interests: '.interests-section',
   favgame:   '.favgame-section',
   games:     '.games-section',
+  schedule:  '.schedule-section',
   watch:     '.watch-section',
   socials:   '.links-section',
 };
@@ -2548,6 +2689,72 @@ document.addEventListener('click', (e) => {
   if (e.target.closest && e.target.closest('.game-slot')) return;
   document.querySelectorAll('.game-slot.tip-on').forEach((el) => el.classList.remove('tip-on'));
 });
+
+// This week's availability: {days: [7 × bool, Sunday first], weekOf:
+// 'YYYY-MM-DD' (that Sunday), note}. Hidden until a week has been published.
+// Dates come from weekOf, so every visitor sees the same week; "today" is the
+// visitor's own date and only marks a day while that week is current.
+const SCHED_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const SCHED_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+function applySchedule(sch) {
+  const section = document.getElementById('scheduleSection');
+  const list = document.getElementById('schedDays');
+  if (!section || !list) return;
+  const o = (sch && typeof sch === 'object') ? sch : {};
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof o.weekOf === 'string' ? o.weekOf : '');
+  if (!m || !Array.isArray(o.days) || o.days.length !== 7) { section.style.display = 'none'; return; }
+  const DAY = 86400000;
+  const start = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const fmt = (t, opts) => new Date(t).toLocaleDateString('en-US', Object.assign({ timeZone: 'UTC' }, opts));
+  const end = start + 6 * DAY;
+  const sameMonth = fmt(start, { month: 'short' }) === fmt(end, { month: 'short' });
+  const week = document.getElementById('schedWeek');
+  week.innerHTML = '';
+  const tag = document.createElement('small');
+  tag.textContent = (today >= start && today <= end) ? 'this week' : 'week of';
+  week.append(tag, fmt(start, { month: 'short', day: 'numeric' }) + ' – ' + fmt(end, sameMonth ? { day: 'numeric' } : { month: 'short', day: 'numeric' }));
+  list.innerHTML = '';
+  for (let i = 0; i < 7; i++) {
+    const t = start + i * DAY;
+    const on = o.days[i] === true;
+    const li = document.createElement('li');
+    li.className = 'sched-day' + (on ? ' on' : '') + (t === today ? ' today' : '');
+    li.setAttribute('aria-label', SCHED_FULL[i] + ', ' + fmt(t, { month: 'long', day: 'numeric' }) + ': ' + (on ? 'available' : 'away') + (t === today ? ' (today)' : ''));
+    const name = document.createElement('span');
+    name.className = 'sched-dname';
+    name.textContent = SCHED_NAMES[i];
+    const dot = document.createElement('span');
+    dot.className = 'sched-dot';
+    const date = document.createElement('span');
+    date.className = 'sched-date';
+    date.textContent = fmt(t, { day: 'numeric' });
+    li.append(name, dot, date);
+    list.appendChild(li);
+  }
+  const noteEl = document.getElementById('schedNote');
+  const note = typeof o.note === 'string' ? o.note.trim() : '';
+  noteEl.textContent = note;
+  noteEl.style.display = note ? '' : 'none';
+  section.style.display = '';
+}
+
+// UI Editor → Schedule: style, colours and font. Blank colours fall back to
+// the stylesheet defaults (site accent, body text) by removing the override.
+function applyScheduleTheme(theme) {
+  const root = document.documentElement;
+  const card = document.getElementById('scheduleCard');
+  const okHex = (h) => typeof h === 'string' && /^#[0-9a-fA-F]{6}$/.test(h);
+  [['--sched-on', theme.schedOnColor], ['--sched-off', theme.schedOffColor], ['--sched-text', theme.schedTextColor]].forEach(([v, c]) => {
+    if (okHex(c)) root.style.setProperty(v, c); else root.style.removeProperty(v);
+  });
+  if (!card) return;
+  card.classList.toggle('sched-tiles', theme.schedStyle === 'tiles');
+  const stack = window.__loadFontStack ? window.__loadFontStack(theme.schedFont, theme.schedFontUrl) : '';
+  if (stack) root.style.setProperty('--sched-font', stack); else root.style.removeProperty('--sched-font');
+  card.classList.toggle('sched-own-font', !!stack);
+}
 
 // Leave-site confirmation for the favorite-game card.
 let __favGamePendingUrl = '';
@@ -3074,6 +3281,8 @@ function applyTheme(theme) {
   document.body.classList.toggle('favgame-name-solid',  theme.favGameGradient === false);
   document.body.classList.toggle('favgame-name-static', theme.favGameAnimate  === false);
 
+  applyScheduleTheme(theme);
+
   // UI style: 'sakura' (default) | 'minimal' (frosted glass) | 'vibey' (purple neon)
   document.body.classList.remove('ui-minimal', 'ui-vibey');
   if (theme.uiStyle === 'minimal') {
@@ -3163,7 +3372,7 @@ function applyUiVisuals(theme) {
   // Apply styles directly to elements via .style.setProperty(prop, val, 'important').
   // This bypasses the CSS specificity battle entirely — inline !important ALWAYS wins
   // over stylesheet rules, regardless of how many class selectors they chain.
-  const otherCardsList = ['interest-card','about-card','dprof-card','yt-card','link-card','soundbar-section','favgame-card','games-card'];
+  const otherCardsList = ['interest-card','about-card','dprof-card','yt-card','link-card','soundbar-section','favgame-card','games-card','schedule-card'];
 
   // Apply to non-hero cards
   otherCardsList.forEach(cls => {

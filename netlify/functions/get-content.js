@@ -92,6 +92,13 @@ const DEFAULT_THEME = {
   bgZoom: false,
   bgStars: false,
   bgStarColor: '#b98cff',
+  // Schedule section (UI Editor → Schedule). '' = follow the site's theme.
+  schedStyle: 'dots',         // 'dots' | 'tiles'
+  schedOnColor: '',           // available days ('' = site accent)
+  schedOffColor: '',          // away days
+  schedTextColor: '',         // day names and dates
+  schedFont: '',              // '' = site font
+  schedFontUrl: '',
   typeSpeed: 55,
   deleteSpeed: 30,
   holdTime: 4500,
@@ -113,7 +120,11 @@ const DEFAULT_DISCORD_BANNER = {
 
 const DEFAULT_FAVORITE_GAME = { name: '', coverUrl: '', blurb: '', url: '' };
 
-const SECTION_IDS = ['discord', 'about', 'interests', 'favgame', 'games', 'watch', 'socials'];
+// This week's availability (Admin → Schedule): days[0] is Sunday, weekOf is
+// that Sunday's date. The section stays hidden until a week is published.
+const DEFAULT_SCHEDULE = { days: [false, false, false, false, false, false, false], weekOf: '', note: '' };
+
+const SECTION_IDS = ['discord', 'schedule', 'about', 'interests', 'favgame', 'games', 'watch', 'socials'];
 const DEFAULT_SECTIONS = SECTION_IDS.map((id) => ({ id, enabled: true }));
 
 // Cloudflare Turnstile SITE key (public). Also hard-coded in index.html; a key
@@ -159,8 +170,9 @@ const DEFAULT_ADMIN_THEME = {
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const obj = (v) => (isObj(v) ? v : {});
 
-// Known ids only, de-duplicated, in saved order; any section missing from the
-// saved list is appended (enabled) so a newly added section never vanishes.
+// Known ids only, de-duplicated, in saved order. A section missing from the
+// saved list (one added after the order was saved) goes in enabled, right
+// after the section it follows by default, so it never vanishes.
 function normalizeSections(list) {
   const out = [];
   const seen = new Set();
@@ -169,8 +181,22 @@ function normalizeSections(list) {
     seen.add(s.id);
     out.push({ id: s.id, enabled: s.enabled !== false });
   }
-  for (const id of SECTION_IDS) if (!seen.has(id)) out.push({ id, enabled: true });
+  SECTION_IDS.forEach((id, i) => {
+    if (seen.has(id)) return;
+    const prev = i > 0 ? out.findIndex((s) => s.id === SECTION_IDS[i - 1]) : -1;
+    out.splice(prev + 1, 0, { id, enabled: true });
+    seen.add(id);
+  });
   return out;
+}
+
+function normalizeSchedule(v) {
+  const s = obj(v);
+  return {
+    days: Array.isArray(s.days) && s.days.length === 7 ? s.days.map((d) => d === true) : DEFAULT_SCHEDULE.days,
+    weekOf: typeof s.weekOf === 'string' ? s.weekOf : '',
+    note: typeof s.note === 'string' ? s.note : '',
+  };
 }
 
 const discordUserId = () => {
@@ -193,7 +219,7 @@ const json = (statusCode, body, headers) => ({
 const PUBLIC_BLOBS = [
   'bio', 'interests', 'interest-meta', 'song', 'youtube', 'handle', 'about', 'theme',
   'custom-badges', 'video-bg', 'discord-banner', 'favorite-game', 'sections', 'features',
-  'socials', 'games', 'enter-screen', 'guild-tag', 'views', 'content-rev',
+  'socials', 'games', 'schedule', 'enter-screen', 'guild-tag', 'views', 'content-rev',
 ];
 const ADMIN_BLOBS = ['presets', 'admin-theme'];
 
@@ -260,6 +286,7 @@ exports.handler = async (event) => {
     socials: Array.isArray(obj(b.socials).socials) ? obj(b.socials).socials : DEFAULT_SOCIALS,
     // "Games I like" grid: up to six {title, imageUrl, url} (Content Editor → G).
     games: Array.isArray(obj(b.games).games) ? obj(b.games).games : [],
+    schedule: normalizeSchedule(b.schedule),
     enterScreen: { ...DEFAULT_ENTER_SCREEN, ...obj(b['enter-screen']) },
     guildTag: { ...DEFAULT_GUILD_TAG, ...obj(b['guild-tag']) },
     // Whose Discord profile both pages show (via Lanyard). Not a secret — it's
@@ -299,7 +326,7 @@ exports.DEFAULTS = {
   DEFAULT_BIO, DEFAULT_INTERESTS, DEFAULT_INTEREST_META, DEFAULT_SONG, DEFAULT_YOUTUBE,
   DEFAULT_HANDLE, DEFAULT_ABOUT, DEFAULT_THEME, DEFAULT_CUSTOM_BADGES, DEFAULT_VIDEO_BG,
   DEFAULT_DISCORD_BANNER, DEFAULT_FAVORITE_GAME, DEFAULT_SECTIONS, DEFAULT_FEATURES,
-  DEFAULT_SOCIALS, DEFAULT_ENTER_SCREEN, DEFAULT_GUILD_TAG, DEFAULT_ADMIN_THEME,
+  DEFAULT_SOCIALS, DEFAULT_ENTER_SCREEN, DEFAULT_GUILD_TAG, DEFAULT_ADMIN_THEME, DEFAULT_SCHEDULE,
 };
 exports.SECTION_IDS = SECTION_IDS;
 exports.DEFAULT_TURNSTILE_SITE_KEY = DEFAULT_TURNSTILE_SITE_KEY;
