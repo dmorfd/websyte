@@ -200,6 +200,7 @@ const ENTER_SCREEN_SPEC = {
   gradColor1: (v) => hex(v, 'Gradient color 1'),
   gradColor2: (v) => hex(v, 'Gradient color 2'),
   gradAngle: (v) => num(v, 'Gradient angle', 0, 360),
+  textScale: (v) => num(v, 'Enter text size', 50, 250, { integer: true }),   // % of the default size
   font: (v) => fontName(v, 'Enter text font'),
   // A full http(s) URL to the font file (e.g. on R2) — loaded by @font-face.
   fontUrl: (v) => url(v, 'Enter text font URL'),

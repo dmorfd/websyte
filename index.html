@@ -87,6 +87,7 @@
         // visitor painted their OLD enter-screen colours for a frame or two
         // before the loader took over — the exact flash this guards against.
         if (__c.grad && __c.style !== 'modern') document.documentElement.style.setProperty('--enter-gradient', __c.grad);
+        if (typeof __c.textScale === 'number') document.documentElement.style.setProperty('--enter-scale', String(__c.textScale / 100));
         // Wordmark font + sound effects for the cinematic loader, so a
         // returning visitor gets the right typeface and audio from frame one
         // instead of Michroma-then-swap.
@@ -545,7 +546,7 @@
     .enter-text{
       position:relative;z-index:2;
       font-family:var(--enter-font,'Noto Serif JP'),'Noto Serif JP',serif;
-      font-size:1.4rem;
+      font-size:calc(1.4rem * var(--enter-scale,1));
       letter-spacing:.18em;
       color:rgba(255,235,235,.85);
       text-align:center;
@@ -563,7 +564,7 @@
       50%{opacity:1;}
     }
     @media (max-width:560px){
-      .enter-text{font-size:1.1rem;letter-spacing:.14em;}
+      .enter-text{font-size:calc(1.1rem * var(--enter-scale,1));letter-spacing:.14em;}
     }
 
     /* ══════════════════════════════
@@ -4190,6 +4191,9 @@ function applyEnterScreen(es) {
   const c1 = (typeof es.gradColor1 === 'string' && /^#[0-9a-fA-F]{6}$/.test(es.gradColor1)) ? es.gradColor1 : '#3c0a1e';
   const c2 = (typeof es.gradColor2 === 'string' && /^#[0-9a-fA-F]{6}$/.test(es.gradColor2)) ? es.gradColor2 : '#000000';
   const angle = (typeof es.gradAngle === 'number' && es.gradAngle >= 0 && es.gradAngle <= 360) ? es.gradAngle : 135;
+  // Enter text size (Admin → Enter Screen → Text size), % of the default.
+  const textScale = (typeof es.textScale === 'number' && es.textScale >= 50 && es.textScale <= 250) ? es.textScale : 100;
+  document.documentElement.style.setProperty('--enter-scale', String(textScale / 100));
   // Apply with opacity baked into the gradient
   const grad = `linear-gradient(${angle}deg,${c1}b3,${c2}f2)`;
   document.documentElement.style.setProperty('--enter-gradient', grad);
@@ -4204,6 +4208,7 @@ function applyEnterScreen(es) {
       text: enterText.textContent,
       grad,
       textFont,
+      textScale,
       textFontUrl,
       style: 'classic',
       enabled: es.enabled !== false,

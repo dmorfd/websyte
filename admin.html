@@ -2744,6 +2744,7 @@ function EnterScreen({ data, reload }) {
   const [c1, setC1] = useState(safeHex(es.gradColor1, "#3c0a1e"));
   const [c2, setC2] = useState(safeHex(es.gradColor2, "#000000"));
   const [angle, setAngle] = useState(typeof es.gradAngle === "number" ? es.gradAngle : 135);
+  const [textScale, setTextScale] = useState(typeof es.textScale === "number" ? es.textScale : 100);
   const [accent, setAccent] = useState(safeHex(es.loaderAccent, "#a97bff"));
   // Cinematic loader only: the "Welcome" wordmark's typeface...
   const [ldFont, setLdFont] = useState(es.loaderFont || "");
@@ -2779,6 +2780,7 @@ function EnterScreen({ data, reload }) {
     setC1(safeHex(e.gradColor1, "#3c0a1e"));
     setC2(safeHex(e.gradColor2, "#000000"));
     setAngle(typeof e.gradAngle === "number" ? e.gradAngle : 135);
+    setTextScale(typeof e.textScale === "number" ? e.textScale : 100);
     setStyle(e.style === "modern" ? "modern" : "classic");
     setAccent(safeHex(e.loaderAccent, "#a97bff"));
     setLdFont(e.loaderFont || "");
@@ -2802,7 +2804,7 @@ function EnterScreen({ data, reload }) {
     try {
       await apiUpdate({
         type: "enter-screen", enabled, style, loaderAccent: accent,
-        text: text.trim(), gradColor1: c1, gradColor2: c2, gradAngle: angle,
+        text: text.trim(), gradColor1: c1, gradColor2: c2, gradAngle: angle, textScale,
         loaderFont: ldFont.trim(), loaderFontUrl: ldFontUrl.trim(),
         font: textFont.trim(), fontUrl: textFontUrl.trim(),
         sfxEnabled: sfxOn, sfxVolume: sfxVol,
@@ -2821,6 +2823,7 @@ function EnterScreen({ data, reload }) {
     setC1(safeHex(e.gradColor1, "#3c0a1e"));
     setC2(safeHex(e.gradColor2, "#000000"));
     setAngle(typeof e.gradAngle === "number" ? e.gradAngle : 135);
+    setTextScale(typeof e.textScale === "number" ? e.textScale : 100);
     setStyle(e.style === "modern" ? "modern" : "classic");
     setAccent(safeHex(e.loaderAccent, "#a97bff"));
     setLdFont(e.loaderFont || "");
@@ -2916,6 +2919,10 @@ function EnterScreen({ data, reload }) {
                 <input className="input" value={c2} onChange={(e) => setC2(e.target.value)} maxLength={7} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
               </div>
               <div>
+                <div className="sld-head"><span>Text size</span><span className="sld-val">{textScale}%</span></div>
+                <input className="slider" type="range" min="50" max="250" step="5" value={textScale} onChange={(e) => setTextScale(+e.target.value)} aria-label="Enter text size" />
+              </div>
+              <div>
                 <div className="sld-head"><span>Gradient angle</span><span className="sld-val">{angle}°</span></div>
                 <input className="slider" type="range" min="0" max="360" step="5" value={angle} onChange={(e) => setAngle(+e.target.value)} />
               </div>
@@ -2993,7 +3000,7 @@ function EnterScreen({ data, reload }) {
               <>
                 <div style={{ position: "absolute", inset: 0, background: "radial-gradient(360px 200px at 50% 60%, rgba(230,74,82,0.1), transparent 65%)" }} />
                 <div style={{
-                  fontSize: 22, fontWeight: 650, letterSpacing: "0.04em", position: "relative",
+                  fontSize: Math.round(22 * textScale) / 100, fontWeight: 650, letterSpacing: "0.04em", position: "relative", textAlign: "center", padding: "0 12px", maxWidth: "100%", overflowWrap: "anywhere",
                   fontFamily: fontStack(textFont, textFontUrl, "'Noto Serif JP', serif"),
                   backgroundImage: `linear-gradient(${angle}deg, ${c1}, ${c2})`,
                   WebkitBackgroundClip: "text", backgroundClip: "text",

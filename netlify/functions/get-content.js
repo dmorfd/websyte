@@ -126,6 +126,7 @@ const DEFAULT_ENTER_SCREEN = {
   gradColor1: '#3c0a1e',
   gradColor2: '#000000',
   gradAngle: 135,
+  textScale: 100,             // classic enter text size, % of the default
   font: '',                   // classic enter text font: a Google Fonts family name…
   fontUrl: '',                // …or a self-hosted file (e.g. on R2)
   loaderAccent: '#a97bff',
