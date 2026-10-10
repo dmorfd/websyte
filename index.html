@@ -1755,16 +1755,6 @@
 
       <h1 class="name" id="handleName"></h1>
 
-      <!-- Lanyard Discord status (requires joining discord.gg/lanyard) -->
-      <div class="status-wrap" id="statusWrap" style="opacity:0;transition:opacity .5s;">
-        <div class="status-dot offline" id="statusDot"></div>
-        <span class="status-text" id="statusText">offline</span>
-      </div>
-      <div class="status-activity-wrap" id="statusActivityWrap" style="display:none;">
-        <div class="status-activity" id="statusActivity"></div>
-        <div class="status-tooltip" id="statusTooltip"></div>
-      </div>
-
       <div class="bio-divider"></div>
       <div class="bio-wrap"><p class="bio-text" id="bioText">loading...</p></div>
 
@@ -2420,9 +2410,6 @@ function applyFeatureToggles(features) {
   const dprofSection = dprofCard ? dprofCard.closest('.scroll-reveal') : null;
   if (dprofSection) dprofSection.style.display = showPresence ? '' : 'none';
 
-  // Hero card live status (the activity wrap with status dot)
-  const statusWrap = document.querySelector('.status-activity-wrap');
-  if (statusWrap) statusWrap.style.display = showPresence ? '' : 'none';
 
   // Views: hide both hero badge AND HUD count
   const heroBadge = document.getElementById('viewBadge');
@@ -2653,6 +2640,12 @@ function setAvatarDecoration(url) {
   ['avatarDeco', 'dprofAvatarDeco'].forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
+    // A decoration that fails to load hides itself instead of showing a broken image.
+    if (!el.dataset.decoGuard) {
+      el.dataset.decoGuard = '1';
+      el.addEventListener('error', () => { el.style.visibility = 'hidden'; });
+      el.addEventListener('load', () => { el.style.visibility = ''; });
+    }
     if (url) { if (el.getAttribute('src') !== url) el.src = url; }
     else if (el.getAttribute('src')) el.removeAttribute('src');
   });
@@ -5046,29 +5039,9 @@ async function fetchLanyard() {
       }
     }
 
-    // ── STATUS (hero card) ──
-    const dot     = document.getElementById('statusDot');
-    const text    = document.getElementById('statusText');
-    const act     = document.getElementById('statusActivity');
-    const tip     = document.getElementById('statusTooltip');
-    const wrap    = document.getElementById('statusWrap');
-    const actWrap = document.getElementById('statusActivityWrap');
+    // Online / idle / dnd / offline — shown on the Discord profile card.
+    // (The hero card no longer shows a status line under the name.)
     const s = data.discord_status || 'offline';
-    dot.className = `status-dot ${s}`; text.textContent = STATUS_LABELS[s]||s; wrap.style.opacity = '1';
-    const heroActivity = data.activities?.find(a=>a.type===4)||data.activities?.find(a=>a.type===0)||data.activities?.find(a=>a.type===2);
-    if (heroActivity) {
-      // For a custom status (type 4) the activity's `name` is always the literal
-      // "Custom Status", so only use its `state` text — otherwise the hero would
-      // show "Custom Status" for anyone whose status is emoji-only or blank.
-      const label = heroActivity.type === 4
-        ? (heroActivity.state || '')
-        : (heroActivity.state || heroActivity.details || heroActivity.name || '');
-      if (label) {
-        act.textContent = `· ${label}`;
-        tip.textContent = label;
-        actWrap.style.display = 'flex';
-      } else { actWrap.style.display = 'none'; }
-    } else { actWrap.style.display = 'none'; }
 
     // ── DISCORD PROFILE WIDGET ──
     const dpUser = document.getElementById('dprofUsername');
@@ -5305,17 +5278,6 @@ fetchLanyard(); setInterval(fetchLanyard, 30000);
 })();
 
 // Mobile tap to toggle status tooltip — also close when tapping outside
-const statusWrapEl = document.getElementById('statusActivityWrap');
-if (statusWrapEl) {
-  statusWrapEl.addEventListener('click', function(e) {
-    e.stopPropagation();
-    this.classList.toggle('active');
-  });
-  document.addEventListener('click', () => {
-    statusWrapEl.classList.remove('active');
-  });
-}
-
 // Mobile tap to toggle audio title tooltip — same behavior
 const audioTitleWrap = document.getElementById('audioTitleWrap');
 if (audioTitleWrap) {
