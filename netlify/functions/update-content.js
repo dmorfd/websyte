@@ -224,7 +224,18 @@ const ADMIN_THEME_SPEC = {
   heroFontUrl: (v) => url(v, 'Hero title font URL', { relative: true }),
   subFont: (v) => fontName(v, 'Hero subtitle font'),
   subFontUrl: (v) => url(v, 'Hero subtitle font URL', { relative: true }),
+  greetings: (v) => greetingList(v),
+  greetingSubtitle: (v) => text(v, 'Greeting subtitle', 100),
 };
+
+// Admin Home welcome messages (Settings → Home Greetings): 1–30 short lines.
+function greetingList(v) {
+  if (!Array.isArray(v)) fail('Welcome messages must be a list.');
+  if (v.length > 30) fail('Too many welcome messages (max 30).');
+  const out = v.map((g, i) => text(g, `Welcome message ${i + 1}`, 80)).filter(Boolean);
+  if (!out.length) fail('Add at least one welcome message.');
+  return out;
+}
 
 // ════════════════════════ HANDLERS ════════════════════════
 // type → { blob, build(body, current) → next value to store }

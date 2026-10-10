@@ -56,7 +56,14 @@ exports.handler = async (event) => {
       ? `https://cdn.discordapp.com/avatar-decoration-presets/${asset}.png?passthrough=true`
       : null;
 
-    return json(200, { ok: true, url, accentColor, avatarDecoration }, CACHED(120));
+    // Nitro display name style (font, effect, colours), when Discord includes
+    // it — a fallback for the profile-card name if Lanyard doesn't carry it.
+    const s = u.display_name_styles;
+    const displayNameStyles = s && typeof s === 'object' && Array.isArray(s.colors)
+      ? { font_id: Number(s.font_id) || 0, effect_id: Number(s.effect_id) || 0, colors: s.colors.filter((c) => Number.isInteger(c)).slice(0, 8) }
+      : null;
+
+    return json(200, { ok: true, url, accentColor, avatarDecoration, displayNameStyles }, CACHED(120));
   } catch (err) {
     console.error('[discord-banner-live] request failed —', err && err.message);
     return json(502, { ok: false, reason: 'discord-unreachable' });

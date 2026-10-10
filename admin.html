@@ -766,7 +766,7 @@ function Login({ onSuccess }) {
       <form className="login-card" onSubmit={submit}>
         <div className="login-brand">
           <div className="login-mark">
-            {markSrc ? <img src={markSrc} alt="" onError={() => setMarkErr(true)} /> : initialsOf(identity.name)}
+            {markSrc ? <img src={markSrc} alt="" onError={() => setMarkErr(true)} /> : initialsOf(identity.name || identity.discordName)}
           </div>
           <div>
             <h1 className="login-title">Admin Panel</h1>
@@ -799,7 +799,7 @@ function Sidebar({ active, setActive, open, close, onLock }) {
     <aside className={"sidebar " + (open ? "open" : "")}>
       <div className="brand">
         <div className="brand-mark">
-          {src ? <img src={src} alt="" onError={() => setImgErr(true)} /> : initialsOf(identity.name)}
+          {src ? <img src={src} alt="" onError={() => setImgErr(true)} /> : initialsOf(identity.name || identity.discordName)}
         </div>
         <div>
           <div className="brand-title">Admin Panel</div>
@@ -838,7 +838,7 @@ let __siteIdentity = null;
 function loadSiteIdentity() {
   if (!__siteIdentity) {
     __siteIdentity = fetch("/.netlify/functions/get-content")
-      .then((r) => (r.ok ? r.json() : {}))
+      .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then((d) => ({
         discordUserId: typeof d.discordUserId === "string" && /^\d{15,25}$/.test(d.discordUserId) ? d.discordUserId : "",
         name: d.handle && typeof d.handle.name === "string" ? d.handle.name.trim() : "",
@@ -847,11 +847,35 @@ function loadSiteIdentity() {
   }
   return __siteIdentity;
 }
+// The owner's Discord user via Lanyard, shared by every hook that needs it and
+// refreshed at most every few minutes.
+let __discordUser = { at: 0, p: null };
+function loadDiscordUser() {
+  if (__discordUser.p && Date.now() - __discordUser.at < 4 * 60 * 1000) return __discordUser.p;
+  __discordUser.at = Date.now();
+  __discordUser.p = loadSiteIdentity()
+    .then(async ({ discordUserId }) => {
+      if (!discordUserId) return null;
+      const res = await fetch("https://api.lanyard.rest/v1/users/" + discordUserId);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const json = await res.json();
+      const u = json && json.data && json.data.discord_user;
+      return u && u.id ? u : null;
+    })
+    .catch(() => { __discordUser.p = null; return null; });
+  return __discordUser.p;
+}
 function useSiteIdentity() {
-  const [identity, setIdentity] = useState({ discordUserId: "", name: "" });
+  const [identity, setIdentity] = useState({ discordUserId: "", name: "", discordName: "" });
   useEffect(() => {
     let cancelled = false;
-    loadSiteIdentity().then((v) => { if (!cancelled) setIdentity(v); });
+    loadSiteIdentity().then((v) => {
+      if (cancelled) return;
+      setIdentity((cur) => ({ ...cur, ...v }));
+      loadDiscordUser().then((u) => {
+        if (!cancelled && u) setIdentity((cur) => ({ ...cur, discordName: u.display_name || u.global_name || u.username || "" }));
+      });
+    });
     return () => { cancelled = true; };
   }, []);
   return identity;
@@ -865,13 +889,8 @@ function useDiscordAvatar() {
     let cancelled = false;
     const fetchAvatar = async () => {
       try {
-        const { discordUserId } = await loadSiteIdentity();
-        if (!discordUserId) return;
-        const res = await fetch("https://api.lanyard.rest/v1/users/" + discordUserId);
-        if (!res.ok) return;
-        const json = await res.json();
-        const u = json?.data?.discord_user;
-        if (!u || !u.id) return;
+        const u = await loadDiscordUser();
+        if (!u) return;
         // Build the CDN URL. Animated avatars start with 'a_' and support .gif
         const ext = (u.avatar || "").startsWith("a_") ? "gif" : "png";
         const src = u.avatar
@@ -1109,52 +1128,45 @@ function useAnalytics(range) {
 }
 
 /* ═══════════════ CINEMATIC HOME (front page) ═══════════════ */
-// ⚙ EDIT THESE TWO LINES to customize your intro title & subtitle:
-// ⚙ Customize the random greetings here. One is picked at random on each
-// page load. The subtitle stays the same. {name} becomes the display handle
-// (Content Editor → Identity); with no handle set, ", {name}" is dropped.
-const INTRO_GREETINGS = [
- "Welcome back, {name}",
-  "Hello, {name}",
-  "Ecstatic to see you!",
-  "Ready when you are.",
-  "Hey there, stranger.",
-  "Back so soon?",
-  "Pharloom needs your saving!",
-  "The Radiance is taking over!",
-  "SPAAACE!",
-  "Fantasizing over anime girls now, heh?",
-  "Welcome home.",
-  "Hello again, {name}",
-  "Lucid Dreaming~...",
-  "Quiet, isn't it?",
-  "Take your time.",
-  "Right on schedule.",
-  "Everything's where you left it.",
-  "Welcome to the inner sanctum.",
-];
-const INTRO_SUBTITLE = "☆ The dragons watch you from above ☆";  // ← tiny text below
+// Home greetings: edited in Settings → Home Greetings (saved with the admin
+// theme). One is picked at random on each page load. {name} becomes the
+// display handle — or the Discord name when no handle is set — and with no
+// name at all, ", {name}" is dropped.
+const DEFAULT_GREETINGS = ["first message"];
+const DEFAULT_GREETING_SUBTITLE = "☆ subtitle ☆";
+const cleanGreetings = (list) => {
+  const out = (Array.isArray(list) ? list : []).filter((g) => typeof g === "string" && g.trim()).map((g) => g.trim());
+  return out.length ? out : DEFAULT_GREETINGS;
+};
+const fillName = (template, name) => name
+  ? template.split("{name}").join(name)
+  : template.replace(/,?\s*\{name\}/g, "").trim();
 //
 // The video background is shared across the entire admin and is configured
 // via Settings → Background Video URL (saved to the `video-bg` blob).
 
 function CinematicHome({ data }) {
-  // Pick once per page load — survives nav away+back, re-rolls only on full reload.
-  // Stored on window so it's stable even when this component unmounts.
+  const at = readAdminTheme(data);
+  const greetings = cleanGreetings(at.greetings);
+  const subtitle = typeof at.greetingSubtitle === "string" ? at.greetingSubtitle : DEFAULT_GREETING_SUBTITLE;
+  const identity = useSiteIdentity();
+  // Pick once per page load — survives nav away+back, re-rolls only on full
+  // reload (or when the picked message was edited away). Stored on window so
+  // it's stable even when this component unmounts.
   const greeting = useMemo(() => {
-    if (!window.__adminIntroGreeting) {
-      window.__adminIntroGreeting = INTRO_GREETINGS[Math.floor(Math.random() * INTRO_GREETINGS.length)];
+    if (!window.__adminIntroGreeting || !greetings.includes(window.__adminIntroGreeting)) {
+      window.__adminIntroGreeting = greetings[Math.floor(Math.random() * greetings.length)];
     }
     return window.__adminIntroGreeting;
-  }, []);
-  const name = (data && data.handle && typeof data.handle.name === "string") ? data.handle.name.trim() : "";
-  const title = name ? greeting.replace("{name}", name) : greeting.replace(/,?\s*\{name\}/, "");
+  }, [greetings.join("\n")]);
+  const handle = (data && data.handle && typeof data.handle.name === "string") ? data.handle.name.trim() : "";
+  const title = fillName(greeting, handle || identity.discordName);
   return (
     <div className="cinematic-intro">
       <div className="intro-glow" aria-hidden="true" />
       <div className="intro-content">
         <h1 className="intro-title">{title}</h1>
-        <p className="intro-sub">{INTRO_SUBTITLE}</p>
+        <p className="intro-sub">{subtitle}</p>
       </div>
     </div>
   );
@@ -1451,7 +1463,7 @@ function ContentEditor({ data, reload }) {
   const [handle, setHandle] = useState(data.handle?.name || "");
   const [bioLines, setBioLines] = useState(Array.isArray(data.bioLines) ? data.bioLines : []);
   const [interests, setInterests] = useState(data.interests || { dragons: "", cats: "", music: "", space: "" });
-  const DEFAULT_INTEREST_META = { space: { name: "Space", kanji: "宇宙" }, dragons: { name: "Dragons", kanji: "龍" }, cats: { name: "Cats", kanji: "猫" }, music: { name: "Music", kanji: "音楽" } };
+  const DEFAULT_INTEREST_META = { space: { name: "First interest", kanji: "一" }, dragons: { name: "Second interest", kanji: "二" }, cats: { name: "Third interest", kanji: "三" }, music: { name: "Fourth interest", kanji: "四" } };
   const [interestMeta, setInterestMeta] = useState(data.interestMeta || DEFAULT_INTEREST_META);
   const [song, setSong] = useState(data.song || {});
   const [youtube, setYoutube] = useState(data.youtube?.url || "");
@@ -1576,17 +1588,19 @@ function ContentEditor({ data, reload }) {
         <div className="glass">
           <div className="grp-head"><span className="grp-letter">C</span><span className="grp-title">Interests</span></div>
           <div className="row-list">
-            {["dragons", "cats", "music", "space"].map((k) => {
+            {/* Same order as the public site. The keys are just storage slots. */}
+            {["space", "dragons", "cats", "music"].map((k, idx) => {
               const m = interestMeta[k] || {};
+              const fallback = DEFAULT_INTEREST_META[k].name;
               const setMeta = (field, val) => setInterestMeta({ ...interestMeta, [k]: { ...(interestMeta[k] || {}), [field]: val } });
               return (
                 <div key={k}>
                   <div className="rep-row" style={{ marginBottom: 6 }}>
-                    <span className="chip">{k}</span>
-                    <input className="input" value={m.name || ""} onChange={(e) => setMeta("name", e.target.value)} maxLength={40} placeholder={k} aria-label={k + " name"} />
-                    <input className="input" style={{ width: 74, flex: "0 0 auto" }} value={m.kanji || ""} onChange={(e) => setMeta("kanji", e.target.value)} maxLength={12} placeholder="漢字" aria-label={k + " kanji"} />
+                    <span className="chip">{"#" + (idx + 1)}</span>
+                    <input className="input" value={m.name || ""} onChange={(e) => setMeta("name", e.target.value)} maxLength={40} placeholder={fallback} aria-label={fallback + " name"} />
+                    <input className="input" style={{ width: 74, flex: "0 0 auto" }} value={m.kanji || ""} onChange={(e) => setMeta("kanji", e.target.value)} maxLength={12} placeholder="漢字" aria-label={fallback + " kanji"} />
                   </div>
-                  <textarea className="textarea" style={{ minHeight: 58 }} value={interests[k] || ""} onChange={(e) => setInterests({ ...interests, [k]: e.target.value })} maxLength={600} placeholder={"what " + k + " means to you…"} />
+                  <textarea className="textarea" style={{ minHeight: 58 }} value={interests[k] || ""} onChange={(e) => setInterests({ ...interests, [k]: e.target.value })} maxLength={600} placeholder={"what " + (m.name || fallback).toLowerCase() + " means to you…"} />
                   <div className="lbl-count" style={{ textAlign: "right" }}>{(interests[k] || "").length} / 600</div>
                 </div>
               );
@@ -1656,9 +1670,9 @@ function ContentEditor({ data, reload }) {
         <div className="glass span-all">
           <div className="grp-head"><span className="grp-letter">E</span><span className="grp-title">Media &amp; features</span></div>
           <div className="fld-grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
-            <div><div className="lbl">Favorite game</div><input className="input" value={favGame.name || ""} onChange={(e) => setFG("name", e.target.value)} placeholder="Wuthering Waves" maxLength={80} /></div>
+            <div><div className="lbl">Favorite game</div><input className="input" value={favGame.name || ""} onChange={(e) => setFG("name", e.target.value)} placeholder="Favorite game" maxLength={80} /></div>
             <div><div className="lbl">Game cover URL</div><input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }} value={favGame.coverUrl || ""} onChange={(e) => setFG("coverUrl", e.target.value)} placeholder="https://…/cover.jpg" /></div>
-            <div><div className="lbl">Game blurb</div><input className="input" value={favGame.blurb || ""} onChange={(e) => setFG("blurb", e.target.value)} placeholder="lost in the Rinascita patch…" maxLength={220} /></div>
+            <div><div className="lbl">Game blurb</div><input className="input" value={favGame.blurb || ""} onChange={(e) => setFG("blurb", e.target.value)} placeholder="a line about the game…" maxLength={220} /></div>
             <div><div className="lbl">Game link</div><input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }} value={favGame.url || ""} onChange={(e) => setFG("url", e.target.value)} placeholder="https://…" /></div>
             <div><div className="lbl">YouTube URL</div><input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }} value={youtube} onChange={(e) => setYoutube(e.target.value)} placeholder="https://youtube.com/…" /></div>
             <div style={{ gridColumn: "1/-1" }}>
@@ -1700,6 +1714,7 @@ function ContentEditor({ data, reload }) {
 /* ═══════════════ UI EDITOR ═══════════════ */
 function UIEditor({ data, reload }) {
   const t = data.theme || {};
+  const identity = useSiteIdentity();
   const [uiStyle, setUiStyle] = useState(t.uiStyle || "sakura");
   const [favC1, setFavC1] = useState(t.favGameColor1 || "#f0c96a");
   const [favC2, setFavC2] = useState(t.favGameColor2 || "#c0392b");
@@ -1976,7 +1991,7 @@ function UIEditor({ data, reload }) {
                 color: "transparent", WebkitTextFillColor: "transparent",
                 filter: nameGlow <= 0 ? "none" : `drop-shadow(0 0 ${(nameGlow / 100 * 36).toFixed(1)}px ${name1}${Math.round((0.25 + nameGlow / 100 * 0.55) * 255).toString(16).padStart(2, "0")})`,
                 transition: "filter .2s",
-              }}>{(data && data.handle && data.handle.name) || "Your name"}</div>
+              }}>{(data && data.handle && data.handle.name) || identity.discordName || "Your name"}</div>
             </div>
             <div>
               <div className="sld-head"><span>Username glow</span><span className="sld-val">{nameGlow <= 0 ? "off" : nameGlow + "%"}</span></div>
@@ -2072,7 +2087,7 @@ function UIEditor({ data, reload }) {
                     color: "transparent", WebkitTextFillColor: "transparent",
                     animation: favAnim ? "favNameFlow 5s linear infinite" : "none",
                   } : { color: c1 }),
-                }}>Wuthering Waves</span>
+                }}>{(data.favoriteGame && data.favoriteGame.name) || "Favorite game"}</span>
               );
             })()}
           </div>
@@ -3049,6 +3064,13 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
   const [subFont, setSubFont] = useState(at.subFont);
   const [subFontUrl, setSubFontUrl] = useState(at.subFontUrl);
   const [themeStatus, showThemeStatus] = useSaveStatus();
+  const [greetings, setGreetings] = useState(cleanGreetings(at.greetings));
+  const [greetSub, setGreetSub] = useState(typeof at.greetingSubtitle === "string" ? at.greetingSubtitle : DEFAULT_GREETING_SUBTITLE);
+  const [greetStatus, showGreetStatus] = useSaveStatus();
+  useEffect(() => {
+    setGreetings(cleanGreetings(at.greetings));
+    setGreetSub(typeof at.greetingSubtitle === "string" ? at.greetingSubtitle : DEFAULT_GREETING_SUBTITLE);
+  }, [at]);
   const [resetStatus, showResetStatus] = useSaveStatus();
   const [resetBusy, setResetBusy] = useState(false);
   // Two-step arm→confirm state for the destructive analytics reset. MUST be
@@ -3072,6 +3094,17 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
     const heroUrl = heroVideoEnabled ? heroVideo.trim() : "";
     try { await apiUpdate({ type: "video-bg", heroUrl }); showHeroVideoStatus("saved ✓"); }
     catch (e) { showHeroVideoStatus(e.message, "err"); }
+  };
+  const saveGreetings = async () => {
+    const list = greetings.map((g) => g.trim()).filter(Boolean);
+    if (!list.length) { showGreetStatus("add at least one message", "err"); return; }
+    try {
+      await apiUpdate({ type: "admin-theme", greetings: list, greetingSubtitle: greetSub.trim() });
+      if (typeof reload === "function") reload();
+      showGreetStatus("saved ✓");
+    } catch (e) {
+      showGreetStatus(e.message || "save failed", "err");
+    }
   };
   const applyTheme = async () => {
     if (!isHex(accent)) { showThemeStatus("invalid accent hex", "err"); return; }
@@ -3201,7 +3234,7 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
             <div className="field-row">
               <div>
                 <div className="field-title" style={{ display: "flex", alignItems: "center", gap: 8 }}><Ico.video /> Main Background Video</div>
-                <div className="field-sub">plays in the admin everywhere EXCEPT the hero / overview</div>
+                <div className="field-sub">plays on the other admin sections when a Hero video is set below — on its own, it plays on Home only</div>
               </div>
               <div className={"switch " + (adminBgVideoEnabled ? "on" : "")} onClick={() => setAdminBgVideoEnabled(!adminBgVideoEnabled)}><div className="knob" /></div>
             </div>
@@ -3222,7 +3255,7 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
               <div className={"switch " + (heroVideoEnabled ? "on" : "")} onClick={() => setHeroVideoEnabled(!heroVideoEnabled)}><div className="knob" /></div>
             </div>
             <input className="input" placeholder="https://…/hero.mp4" value={heroVideo} onChange={(e) => setHeroVideo(e.target.value)} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} disabled={!heroVideoEnabled} />
-            <div className="field-sub">if disabled, the admin's main background video shows on the hero too</div>
+            <div className="field-sub">if disabled, the main background video plays on Home instead (and nowhere else)</div>
             <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 6 }}>
               <span className={"save-status " + heroVideoStatus.kind}>{heroVideoStatus.msg}</span>
               <button className="btn btn-primary btn-tiny" onClick={saveHeroVideo}>Save hero video</button>
@@ -3296,8 +3329,42 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
 
           <div style={{ height: 1, background: "var(--line)", margin: "6px 0" }} />
 
-          <div className="set-sec danger">
+          <div className="set-sec">
             <span className="n">03</span>
+            <span className="t">Home Greetings</span>
+            <span className="s">one is picked at random</span>
+          </div>
+
+          <div className="field">
+            <div className="field-title" style={{ textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: ".16em" }}>Welcome Messages</div>
+            {greetings.map((g, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input className="input" value={g} maxLength={80} placeholder="first message" aria-label={"Welcome message " + (i + 1)}
+                  onChange={(e) => setGreetings(greetings.map((x, j) => (j === i ? e.target.value : x)))} />
+                <button className="btn btn-tiny" title="Remove" aria-label={"Remove welcome message " + (i + 1)} disabled={greetings.length <= 1}
+                  onClick={() => setGreetings(greetings.filter((_, j) => j !== i))}>×</button>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div className="field-sub">{"{name}"} becomes your display name — e.g. "Welcome back, {"{name}"}"</div>
+              <button className="btn btn-tiny" disabled={greetings.length >= 30} onClick={() => setGreetings([...greetings, ""])}>+ Add message</button>
+            </div>
+          </div>
+
+          <div className="field">
+            <div className="field-title" style={{ textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: ".16em" }}>Subtitle</div>
+            <input className="input" value={greetSub} maxLength={100} placeholder="small line under the greeting" onChange={(e) => setGreetSub(e.target.value)} />
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center" }}>
+            <span className={"save-status " + greetStatus.kind}>{greetStatus.msg}</span>
+            <button className="btn btn-primary btn-tiny" onClick={saveGreetings}>Save greetings</button>
+          </div>
+
+          <div style={{ height: 1, background: "var(--line)", margin: "6px 0" }} />
+
+          <div className="set-sec danger">
+            <span className="n">04</span>
             <span className="t">Danger Zone</span>
             <span className="s">actions can't be undone</span>
           </div>
@@ -3352,6 +3419,11 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
 
 const AUDIO_FADE_MS = 2000;
 
+// Main video visibility. With a Hero video set: Hero on Home, Main on every
+// other section. Without one, Main plays on Home only — whatever plays on Home
+// always fades out when you leave it.
+const mainVisible = (onHome, hasHero) => (hasHero ? !onHome : onHome);
+
 function SiteVideoBackground({ url, heroUrl, isHero }) {
   const mainRef = useRef(null);
   const heroRef = useRef(null);
@@ -3394,7 +3466,9 @@ function SiteVideoBackground({ url, heroUrl, isHero }) {
       return v;
     };
 
-    mainRef.current = makeVideo(url, false);
+    // The main video only exists for the other sections when it differs from
+    // the Home video; on its own it's Home's video, and leaves with it.
+    mainRef.current = makeVideo(url === heroUrl ? "" : url, false);
     heroRef.current = makeVideo(heroUrl, true);
 
     // Expose the hero video to the rest of the app so the topbar audio
@@ -3402,7 +3476,7 @@ function SiteVideoBackground({ url, heroUrl, isHero }) {
     window.__adminHeroVideo = heroRef.current;
 
     // Apply initial visibility based on which page we started on
-    if (mainRef.current) mainRef.current.style.opacity = (isHero && heroRef.current) ? "0" : "1";
+    if (mainRef.current) mainRef.current.style.opacity = mainVisible(isHero, !!heroRef.current) ? "1" : "0";
     if (heroRef.current) heroRef.current.style.opacity = isHero ? "1" : "0";
 
     return () => {
@@ -3418,12 +3492,12 @@ function SiteVideoBackground({ url, heroUrl, isHero }) {
     const main = mainRef.current;
     const hero = heroRef.current;
     if (!hero) {
-      if (main) main.style.opacity = "1";
+      if (main) main.style.opacity = mainVisible(isHero, false) ? "1" : "0";
       return;
     }
 
     // Visual cross-fade (fast)
-    if (main) main.style.opacity = isHero ? "0" : "1";
+    if (main) main.style.opacity = mainVisible(isHero, true) ? "1" : "0";
     hero.style.opacity = isHero ? "1" : "0";
 
     // Respect the user-mute flag. The audio-toggle button sets/clears

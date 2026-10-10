@@ -30,18 +30,21 @@ const DEFAULT_BIO = [
 
 const INTEREST_KEYS = ['space', 'dragons', 'cats', 'music'];
 
+// The four interest slots keep their original storage keys (space, dragons,
+// cats, music) so saved content stays put; what visitors see is the name,
+// kanji and text below, all editable in Admin → Content Editor → Interests.
 const DEFAULT_INTERESTS = {
-  space: 'Write your thoughts about space here. What fascinates you — the scale of it, the mystery of black holes, the possibility of life elsewhere?',
-  dragons: "Write your thoughts about dragons here. Eastern, Western, Hollow Knight's wyrms — whatever draws you to them.",
-  cats: 'Write your thoughts about cats here. Favorite breeds, why you love them, your own cats, etc.',
-  music: 'Write your thoughts about music here. Genres, artists, what music means to you.',
+  space: 'Write about your first interest here.',
+  dragons: 'Write about your second interest here.',
+  cats: 'Write about your third interest here.',
+  music: 'Write about your fourth interest here.',
 };
 
 const DEFAULT_INTEREST_META = {
-  space: { name: 'Space', kanji: '宇宙' },
-  dragons: { name: 'Dragons', kanji: '龍' },
-  cats: { name: 'Cats', kanji: '猫' },
-  music: { name: 'Music', kanji: '音楽' },
+  space: { name: 'First interest', kanji: '一' },
+  dragons: { name: 'Second interest', kanji: '二' },
+  cats: { name: 'Third interest', kanji: '三' },
+  music: { name: 'Fourth interest', kanji: '四' },
 };
 
 const DEFAULT_SONG = {
@@ -142,6 +145,8 @@ const DEFAULT_ADMIN_THEME = {
   heroFontUrl: '',
   subFont: 'Geist',
   subFontUrl: '',
+  greetings: ['first message'],      // admin Home: one picked at random per visit
+  greetingSubtitle: '☆ subtitle ☆',
 };
 
 // ════════════════════════ HELPERS ════════════════════════
@@ -205,7 +210,7 @@ exports.handler = async (event) => {
     store = contentStore();
   } catch (err) {
     console.error('[get-content] blobs not configured —', err && err.message);
-    return json(500, { ok: false, error: 'Content store not configured — set NETLIFY_SITE_ID and NETLIFY_BLOBS_TOKEN.' });
+    return json(500, { ok: false, error: 'Content store not configured — set NETLIFY_SITE_ID and NETLIFY_BLOBS_TOKEN.', discordUserId: discordUserId() });
   }
 
   const keys = isAdmin ? PUBLIC_BLOBS.concat(ADMIN_BLOBS) : PUBLIC_BLOBS;
@@ -215,7 +220,7 @@ exports.handler = async (event) => {
     console.error(`[get-content] read "${k}" failed —`, err && err.message);
     return null;
   })));
-  if (failures === keys.length) return json(503, { ok: false, error: 'Content store unavailable — try again shortly.' });
+  if (failures === keys.length) return json(503, { ok: false, error: 'Content store unavailable — try again shortly.', discordUserId: discordUserId() });
   // The admin edits whole sections; loading defaults in place of an unreadable
   // blob would let the next Save overwrite real content — so fail loudly.
   if (failures && isAdmin) return json(503, { ok: false, error: 'Some content could not be loaded — try again shortly.' });

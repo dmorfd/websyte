@@ -579,6 +579,7 @@
 
     /* Handle */
     .name{font-family:'Noto Serif JP',serif;font-size:clamp(1.9rem,5.5vw,2.7rem);font-weight:600;letter-spacing:.06em;background:linear-gradient(var(--name-angle),var(--name-color-1) 10%,var(--name-color-1) 38%,var(--name-color-2) 68%,var(--name-color-2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:var(--name-glow-filter,drop-shadow(0 0 20px rgba(192,57,43,.55)));line-height:1.15;text-align:center;white-space:nowrap;transition:background .4s ease;}
+    .name:empty::before{content:"\00a0";}
 
     /* Discord status */
     .status-wrap{display:flex;align-items:center;gap:.5rem;margin-top:.1rem;}
@@ -956,6 +957,13 @@
        transparent fill / gradient. */
     .dprof-username--styled::before{
       -webkit-text-fill-color:rgba(212,168,75,.5);color:rgba(212,168,75,.5);
+      text-shadow:none;-webkit-text-stroke:0;
+    }
+    /* Gummy: each letter its own colour, with a soft squish. */
+    .dn-gummy{display:inline-block;white-space:pre;animation:dnGummy 1.8s ease-in-out infinite;transform-origin:50% 90%;}
+    @keyframes dnGummy{0%,100%{transform:scale(1,1);}40%{transform:scale(1.08,.9);}70%{transform:scale(.96,1.05);}}
+    @media (prefers-reduced-motion: reduce){
+      .dprof-username,.dn-gummy{animation:none !important;}
     }
 
     /* ─── BADGES (polished) ─── */
@@ -1742,42 +1750,42 @@
     <p class="section-label" style="margin-bottom:.75rem;">interests</p>
     <div class="interest-card" data-interest="space">
       <div class="interest-header">
-        <span class="interest-label">Space</span>
-        <span class="interest-kanji">宇宙</span>
+        <span class="interest-label">First interest</span>
+        <span class="interest-kanji">一</span>
         <span class="interest-chevron">▾</span>
       </div>
       <div class="interest-body"><div class="interest-body-inner">
-        <p class="interest-para" id="interest-space">Write your thoughts about space here. What fascinates you — the scale of it, the mystery of black holes, the possibility of life elsewhere?</p>
+        <p class="interest-para" id="interest-space">Write about your first interest here.</p>
       </div></div>
     </div>
     <div class="interest-card" data-interest="dragons">
       <div class="interest-header">
-        <span class="interest-label">Dragons</span>
-        <span class="interest-kanji">龍</span>
+        <span class="interest-label">Second interest</span>
+        <span class="interest-kanji">二</span>
         <span class="interest-chevron">▾</span>
       </div>
       <div class="interest-body"><div class="interest-body-inner">
-        <p class="interest-para" id="interest-dragons">Write your thoughts about dragons here. Eastern, Western, Hollow Knight's wyrms — whatever draws you to them.</p>
+        <p class="interest-para" id="interest-dragons">Write about your second interest here.</p>
       </div></div>
     </div>
     <div class="interest-card" data-interest="cats">
       <div class="interest-header">
-        <span class="interest-label">Cats</span>
-        <span class="interest-kanji">猫</span>
+        <span class="interest-label">Third interest</span>
+        <span class="interest-kanji">三</span>
         <span class="interest-chevron">▾</span>
       </div>
       <div class="interest-body"><div class="interest-body-inner">
-        <p class="interest-para" id="interest-cats">Write your thoughts about cats here. Favorite breeds, why you love them, your own cats, etc.</p>
+        <p class="interest-para" id="interest-cats">Write about your third interest here.</p>
       </div></div>
     </div>
     <div class="interest-card" data-interest="music">
       <div class="interest-header">
-        <span class="interest-label">Music</span>
-        <span class="interest-kanji">音楽</span>
+        <span class="interest-label">Fourth interest</span>
+        <span class="interest-kanji">四</span>
         <span class="interest-chevron">▾</span>
       </div>
       <div class="interest-body"><div class="interest-body-inner">
-        <p class="interest-para" id="interest-music">Write your thoughts about music here. Genres, artists, what music means to you.</p>
+        <p class="interest-para" id="interest-music">Write about your fourth interest here.</p>
       </div></div>
     </div>
   </div>
@@ -1861,7 +1869,7 @@
 
 <footer class="site-footer">
   <p class="footer-handle"><a href="/" id="footerSite"></a></p>
-  <p class="footer-handle">site made by <a href="https://discord.com/users/795035082322739230" target="_blank" rel="noopener">@a_random_person121</a></p>
+  <p class="footer-handle">site made by <a href="https://discord.com/users/795035082322739230" target="_blank" rel="noopener">@dmorfd</a></p>
   <p class="footer-kanji">桜 · 花 · 道 · 静 · 月</p>
 </footer>
 
@@ -1872,6 +1880,11 @@
 // Footer link + HUD location: the domain comes from the address bar; an
 // empty location hides itself (see #hudLocText).
 (function () {
+  try {
+    const n = localStorage.getItem('heroNameCache');
+    const h = document.getElementById('handleName');
+    if (n && h && !h.textContent) { h.textContent = n; document.title = n; }
+  } catch (e) {}
   const site = document.getElementById('footerSite');
   if (site) site.textContent = location.hostname.replace(/^www\./, '');
   const loc = document.getElementById('hudLocText');
@@ -1908,7 +1921,13 @@ function extractYoutubeId(url) {
 async function loadContent() {
   try {
     const res = await fetch('/.netlify/functions/get-content');
-    if (!res.ok) return;
+    if (!res.ok) {
+      try {
+        const e = await res.json();
+        if (e && typeof e.discordUserId === 'string' && window.__setDiscordUserId) window.__setDiscordUserId(e.discordUserId);
+      } catch (err) {}
+      return;
+    }
     const data = await res.json();
 
     // Site accent known up-front so the glow (applyUiVisuals) can use it.
@@ -2425,6 +2444,11 @@ async function syncDiscordBanner() {
       const d = await res.json().catch(() => ({}));
       if (d && typeof d.accentColor === 'number') window.__discordAccent = d.accentColor; // for the empty-banner gradient
       if (d && d.reason !== 'no-token') { window.__decoFromBot = true; setAvatarDecoration(d.avatarDecoration || null); } // bot is authoritative for the decoration
+      if (d && d.displayNameStyles && typeof d.displayNameStyles === 'object') {
+        window.__botNameStyles = d.displayNameStyles;
+        const dpUser = document.getElementById('dprofUsername');
+        if (dpUser && dpUser.dataset.dnsName) renderDiscordName(dpUser, dpUser.dataset.dnsName);
+      }
       if (d && d.url && window.__bannerAutoSync) {
         // auto-sync on + live banner → mirror it (default framing)
         applyDiscordBanner({ url: d.url });
@@ -4145,6 +4169,7 @@ function setHeroName(name) {
   const nameEl = document.getElementById('handleName');
   if (nameEl && nameEl.textContent !== name) { nameEl.textContent = name; fitHeroName(); }
   document.title = name;
+  try { localStorage.setItem('heroNameCache', name); } catch (e) {}
   const fb = document.getElementById('avatarFallback');
   if (fb) fb.textContent = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => Array.from(w)[0]).join('').toUpperCase();
 }
@@ -4163,6 +4188,7 @@ try {
   if (__cachedAvatar && avatarImg && avatarImg.src !== __cachedAvatar) avatarImg.src = __cachedAvatar;
 } catch (e) {}
 avatarImg.addEventListener('error',()=>{avatarImg.style.display='none';avatarFB.style.display='flex';});
+if (avatarImg.complete && !avatarImg.naturalWidth) { avatarImg.style.display='none'; avatarFB.style.display='flex'; }
 avatarImg.addEventListener('load',()=>{
   avatarImg.style.display='';
   if (avatarFB) avatarFB.style.display='none';
@@ -4608,59 +4634,99 @@ setInterval(() => {
 }, 1000);
 
 // ── DISCORD DISPLAY NAME STYLE (Nitro) ──
-// Discord's user object carries display_name_styles = {colors:[int,…], effect_id,
-// font_id}. Lanyard forwards it, so we can mirror the effect's colours onto the
-// profile-card name and it stays in sync — change it in Discord and it updates
-// on the next Lanyard poll. colors are decimal RGB ints (1 = Solid, 2 = Gradient,
-// 5 = Prism). We paint them as a clipped-text gradient; effect_id lets us add a
-// neon glow when Discord uses one. font_id isn't mirrored (the fonts are
-// proprietary and the styled look already lives in the display_name glyphs).
+// Discord Nitro display name styles: display_name_styles = {font_id, effect_id,
+// colors:[int,…]} (decimal RGB). Lanyard forwards it; discord-banner-live also
+// passes it on when a bot token is set. Effect ids, in Discord's order:
+//   1 Solid · 2 Gradient · 3 Neon · 4 Toon · 5 Pop · 6 Glow · 7 Prism · 8 Gummy
+// Prism takes up to five colours (Gradient takes two). font_id isn't mirrored —
+// Discord's display-name fonts aren't publicly hosted. The name only re-renders
+// when the name or its style changes, so the 30 s Lanyard poll doesn't restart
+// the animations.
+const DNS_EFFECT = { SOLID: 1, GRADIENT: 2, NEON: 3, TOON: 4, POP: 5, GLOW: 6, PRISM: 7, GUMMY: 8 };
+function renderDiscordName(el, name) {
+  if (!el) return;
+  const styles = window.__lanyardNameStyles || window.__botNameStyles || null;
+  const key = JSON.stringify([name, styles]);
+  if (el.dataset.dnsKey === key) return;
+  el.dataset.dnsKey = key;
+  el.dataset.dnsName = name;
+  el.textContent = name;
+  applyDisplayNameStyle(el, styles);
+}
 function applyDisplayNameStyle(el, styles) {
   if (!el) return;
   const intToHex = (c) => '#' + ('000000' + (((c >>> 0) & 0xFFFFFF)).toString(16)).slice(-6);
-  const clear = () => {
-    ['background-image','background-size','-webkit-background-clip','background-clip',
-     '-webkit-text-fill-color','color','text-shadow','animation'].forEach((p) => el.style.removeProperty(p));
-    el.classList.remove('dprof-username--styled');
-  };
+  ['background-image','background-size','-webkit-background-clip','background-clip',
+   '-webkit-text-fill-color','color','text-shadow','animation','-webkit-text-stroke','paint-order'].forEach((p) => el.style.removeProperty(p));
+  el.classList.remove('dprof-username--styled');
   const cols = (styles && Array.isArray(styles.colors)) ? styles.colors.filter((c) => typeof c === 'number').map(intToHex) : [];
-  if (!cols.length) { clear(); return; }
-
+  if (!cols.length) return;
   el.classList.add('dprof-username--styled');
-  if (cols.length === 1) {
-    // Solid — single colour, no gradient clip.
-    el.style.removeProperty('background-image'); el.style.removeProperty('-webkit-background-clip');
-    el.style.removeProperty('background-clip'); el.style.removeProperty('-webkit-text-fill-color');
-    el.style.setProperty('color', cols[0]);
-  } else {
-    // Palindrome the colours (c1…cN…c1) and oversize the background so it can
-    // scroll seamlessly — an animated iridescent sweep like Discord's. At rest
-    // (reduced-motion) the left half still shows the full palette, so it just
-    // looks like a normal static gradient.
-    const animCols = cols.concat(cols.slice(0, -1).reverse());
-    const grad = 'linear-gradient(90deg,' + animCols.join(',') + ')';
-    el.style.setProperty('background-image', grad);
-    el.style.setProperty('background-size', '200% auto');
-    el.style.setProperty('-webkit-background-clip', 'text');
-    el.style.setProperty('background-clip', 'text');
-    el.style.setProperty('-webkit-text-fill-color', 'transparent');
-    el.style.setProperty('color', 'transparent');
-    el.style.setProperty('animation', 'dnShimmer 6s linear infinite');
-  }
-  // effect_id 4 is Neon in the current roster — add a soft glow in the first
-  // colour. Unknown effect ids just render as the colour gradient above.
-  if (styles.effect_id === 4) {
-    el.style.setProperty('text-shadow', `0 0 8px ${cols[0]}, 0 0 16px ${cols[cols.length - 1]}`);
-  } else {
-    el.style.removeProperty('text-shadow');
+  const set = (p, v) => el.style.setProperty(p, v);
+  const c1 = cols[0], c2 = cols[1] || cols[0];
+  // Clip an (optionally animated) gradient to the letters. The colours are
+  // palindromed (c1…cN…c1) on a 200%-wide background so the sweep loops
+  // seamlessly; with reduced motion it rests as a plain gradient.
+  const sweep = (list, seconds) => {
+    const loop = list.length > 1 ? list.concat(list.slice(0, -1).reverse()) : list.concat(list);
+    set('background-image', 'linear-gradient(90deg,' + loop.join(',') + ')');
+    set('background-size', '200% auto');
+    set('-webkit-background-clip', 'text');
+    set('background-clip', 'text');
+    set('-webkit-text-fill-color', 'transparent');
+    set('color', 'transparent');
+    set('animation', `dnShimmer ${seconds}s linear infinite`);
+  };
+  let effect = Number(styles.effect_id) || 0;
+  if (!effect) effect = cols.length > 1 ? DNS_EFFECT.GRADIENT : DNS_EFFECT.SOLID;
+  switch (effect) {
+    case DNS_EFFECT.SOLID:
+      set('color', c1);
+      break;
+    case DNS_EFFECT.NEON:      // white core, glow in the chosen colour
+      set('color', '#ffffff');
+      set('text-shadow', `0 0 2px ${c1}, 0 0 6px ${c1}, 0 0 12px ${c1}, 0 0 20px ${c2}`);
+      break;
+    case DNS_EFFECT.TOON:      // coloured letters with a thick outline
+      set('color', c1);
+      set('-webkit-text-stroke', `2px ${cols[1] || '#000000'}`);
+      set('paint-order', 'stroke fill');
+      break;
+    case DNS_EFFECT.POP:       // white letters on a solid drop copy
+      set('color', '#ffffff');
+      set('text-shadow', `2px 2px 0 ${c1}`);
+      break;
+    case DNS_EFFECT.GLOW:
+      set('color', c1);
+      set('text-shadow', `0 0 6px ${c1}, 0 0 14px ${c2}`);
+      break;
+    case DNS_EFFECT.PRISM:     // every chosen colour (up to five), flowing
+      sweep(cols.slice(0, 5), 4);
+      break;
+    case DNS_EFFECT.GUMMY: {   // each letter its own colour, softly squishing
+      const text = el.textContent;
+      el.textContent = '';
+      Array.from(text).forEach((ch, i) => {
+        const s = document.createElement('span');
+        s.className = 'dn-gummy';
+        s.textContent = ch;
+        s.style.color = cols[i % cols.length];
+        s.style.animationDelay = (i * 0.09).toFixed(2) + 's';
+        el.appendChild(s);
+      });
+      break;
+    }
+    default:                   // Gradient, or an effect newer than this list
+      if (cols.length > 1) sweep(cols, 6); else set('color', c1);
   }
 }
 
 async function fetchLanyard() {
   if (!LANYARD_USER_ID) return;
+  const forId = LANYARD_USER_ID;
   try {
-    const res = await fetch(`https://api.lanyard.rest/v1/users/${LANYARD_USER_ID}`);
-    if (!res.ok) return;
+    const res = await fetch(`https://api.lanyard.rest/v1/users/${forId}`);
+    if (!res.ok || forId !== LANYARD_USER_ID) return;
     const {data} = await res.json();
 
     // ── AUTO-UPDATE AVATAR ──
@@ -4767,8 +4833,8 @@ async function fetchLanyard() {
 
     if (dpUser && data.discord_user) {
       const u = data.discord_user;
-      dpUser.textContent = u.display_name || u.global_name || u.username || 'unknown';
-      applyDisplayNameStyle(dpUser, u.display_name_styles);
+      window.__lanyardNameStyles = u.display_name_styles || null;
+      renderDiscordName(dpUser, u.display_name || u.global_name || u.username || 'unknown');
     }
     // No display handle set in the admin → the hero shows the Discord name.
     if (data.discord_user) {
@@ -5155,7 +5221,8 @@ const setProg=p=>{fill.style.width=p+'%';thumb.style.left=p+'%';};
 
 audio.addEventListener('timeupdate',()=>{if(scrubbing||!audio.duration)return;setProg((audio.currentTime/audio.duration)*100);timeCur.textContent=fmt(audio.currentTime);});
 audio.addEventListener('loadedmetadata',()=>{timeDur.textContent=fmt(audio.duration);});
-audio.addEventListener('play',()=>{playIcon.innerHTML=PAUSE;});
+audio.addEventListener('play',()=>{ if (audio.getAttribute('src')) playIcon.innerHTML=PAUSE; });
+audio.addEventListener('playing',()=>{playIcon.innerHTML=PAUSE;});
 audio.addEventListener('pause',()=>{playIcon.innerHTML=PLAY;});
 audio.addEventListener('ended',()=>{playIcon.innerHTML=PLAY;setProg(0);});
 playBtn.addEventListener('click',()=>{

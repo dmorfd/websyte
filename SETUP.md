@@ -12,7 +12,7 @@ This copy keeps the following.
 
 **Admin**
 - Home, Analytics, Content Editor, UI Editor, Presets, Discord Badges and Enter Screen, numbered 01–07.
-- The Settings drawer: 01 Public Site Features, 02 Admin Panel Theme and 03 Danger Zone. Danger Zone keeps the view reset and the Cloudflare Turnstile Gate toggle.
+- The Settings drawer: 01 Public Site Features, 02 Admin Panel Theme, 03 Home Greetings (new: the admin home page's welcome messages) and 04 Danger Zone. Danger Zone keeps the view reset and the Cloudflare Turnstile Gate toggle.
 
 **Removed**
 - Current Job.
@@ -116,22 +116,17 @@ the site belongs to while they run:
 | Avatar initials (only shown if no picture loads) | The name above |
 | Song, artist, cover | Admin → Content Editor → D Audio |
 | Domain (footer link, admin login, sidebar, help text) | The address bar |
-| Admin home greetings | `{name}` in `INTRO_GREETINGS` becomes the display handle. With none set, ", {name}" is dropped |
+| Admin home greetings and subtitle | Admin → Settings → 03 Home Greetings (default "first message" / "☆ subtitle ☆"). One is picked at random per visit; `{name}` becomes the display handle, or the Discord name |
+| Interests, about, bio, favorite game | Admin → Content Editor. Until then the site shows neutral placeholders ("First interest" … "Fourth interest", 一 二 三 四); the favorite-game card stays hidden until a game is set |
 | Discord API User-Agent | Netlify's built-in `URL` variable |
 
 Only three things in `index.html` are still typed in by hand:
 
 | Line | What | Notes |
 |---|---|---|
-| 3930 | `YOUR_TURNSTILE_SITE_KEY` | The Turnstile **site** key (§5). Only needed if the gate is switched on in Settings → Danger Zone. |
-| 1828 | `<span id="hudLocText"></span>` | Optional location in the bottom-right corner, e.g. `<span id="hudLocText">Berlin, Germany</span>`. Left empty, it's hidden. There's no admin field for it. |
-| 1864 | "site made by @a_random_person121" | Your credit as the person who made the site, linking to your Discord. Edit or delete the line if you'd rather not. |
-
-**Your call:** the other home greetings in `INTRO_GREETINGS` (admin.html,
-"Pharloom needs your saving!", "The Radiance is taking over!", "Fantasizing over
-anime girls now, heh?", "Lucid Dreaming~...") and `INTRO_SUBTITLE` are your own
-flavour text. I left them unchanged. "Lucid Dreaming~..." is a nod to the
-removed Dream Journal, so you may want to drop it.
+| 3954 | `YOUR_TURNSTILE_SITE_KEY` | The Turnstile **site** key (§5). Only needed if the gate is switched on in Settings → Danger Zone. |
+| 1836 | `<span id="hudLocText"></span>` | Optional location in the bottom-right corner, e.g. `<span id="hudLocText">Berlin, Germany</span>`. Left empty, it's hidden. There's no admin field for it. |
+| 1872 | "site made by @dmorfd" | Your credit as the person who made the site, linking to your Discord. Edit or delete the line if you'd rather not. |
 
 ---
 
@@ -167,7 +162,7 @@ removed Dream Journal, so you may want to drop it.
    - Hostnames: the friend's custom domain **and** their `*.netlify.app`
      subdomain.
    - Mode: Managed.
-   - Site key → index.html line 3930. Secret key → Netlify env
+   - Site key → index.html line 3954. Secret key → Netlify env
      `TURNSTILE_SECRET_KEY`.
 2. **R2** → create a bucket → Settings → Public access → enable the `r2.dev`
    subdomain, or connect a custom domain. Media URLs are pasted into the admin
@@ -229,6 +224,17 @@ removed Dream Journal, so you may want to drop it.
 - "Glow colour" falls back to it when blank.
 - Presets snapshot it with the rest of the theme.
 - At `#e7a6e0`, every kept card's computed style matches your original site.
+
+**Discord name effects.** The profile card's name mirrors the friend's Nitro
+display name style: Solid, Gradient, Neon, Toon, Pop, Glow, Prism (up to five
+colours, flowing) and Gummy (a colour per letter). The style comes from
+Lanyard, or from the bot (`discord-banner-live`) if Lanyard doesn't carry it.
+Discord's display-name fonts aren't public, so the font itself isn't copied.
+
+**Admin videos.** Whatever plays on the admin Home page fades out on the other
+sections. With both videos set, the Hero / Overview video plays on Home and the
+Main Background Video on every other section. With only the Main video, it
+plays on Home only.
 
 **Hamburger → footer link.** The burger icon, its overlay and its script are
 gone. The one remaining link is in the footer, and shows the site's own domain.
