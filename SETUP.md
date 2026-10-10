@@ -120,13 +120,14 @@ the site belongs to while they run:
 | Interests, about, bio, favorite game | Admin → Content Editor. Until then the site shows neutral placeholders ("First interest" … "Fourth interest", 一 二 三 四); the favorite-game card stays hidden until a game is set |
 | Discord API User-Agent | Netlify's built-in `URL` variable |
 
-Only three things in `index.html` are still typed in by hand:
+| Turnstile site key | Admin → Settings → Danger Zone → Cloudflare Turnstile Gate → Site key (§5) |
+
+Only two things in `index.html` are still typed in by hand, both optional:
 
 | Line | What | Notes |
 |---|---|---|
-| 3954 | `YOUR_TURNSTILE_SITE_KEY` | The Turnstile **site** key (§5). Only needed if the gate is switched on in Settings → Danger Zone. |
-| 1836 | `<span id="hudLocText"></span>` | Optional location in the bottom-right corner, e.g. `<span id="hudLocText">Berlin, Germany</span>`. Left empty, it's hidden. There's no admin field for it. |
-| 1872 | "site made by @dmorfd" | Your credit as the person who made the site, linking to your Discord. Edit or delete the line if you'd rather not. |
+| 1988 | `<span id="hudLocText"></span>` | Optional location in the bottom-right corner, e.g. `<span id="hudLocText">Berlin, Germany</span>`. Left empty, it's hidden. There's no admin field for it. |
+| 2024 | "site made by @dmorfd" | Your credit as the person who made the site, linking to your Discord. Edit or delete the line if you'd rather not. |
 
 ---
 
@@ -173,7 +174,8 @@ Only three things in `index.html` are still typed in by hand:
    - Hostnames: the friend's custom domain **and** their `*.netlify.app`
      subdomain.
    - Mode: Managed.
-   - Site key → index.html line 3954. Secret key → Netlify env
+   - Site key → Admin → Settings → Danger Zone → Cloudflare Turnstile Gate →
+     Site key (then switch the gate on and Save). Secret key → Netlify env
      `TURNSTILE_SECRET_KEY`.
 2. **R2** → create a bucket → Settings → Public access → enable the `r2.dev`
    subdomain, or connect a custom domain. Media URLs are pasted into the admin
@@ -304,7 +306,10 @@ the key, is gone.
 - Trade-off: someone hammering the login from many IPs can stop *new* admin
   logins for up to an hour. An already-unlocked browser keeps working.
 
-**Turnstile gate is enforced server-side.**
+**Turnstile gate is enforced server-side.** It only switches on once a site key
+is saved with it. If verification can't start, the gate says why on screen
+(domain not on the widget's hostname list, wrong site key, or Cloudflare's
+script blocked by an ad blocker) instead of hanging on "checking your browser".
 - When Settings → Danger Zone → Cloudflare Turnstile Gate is on, a visitor who
   passes Turnstile gets a signed, HttpOnly cookie, valid for 6 hours.
 - Visitors without that cookie are ignored by `increment-view`, `log-event` and

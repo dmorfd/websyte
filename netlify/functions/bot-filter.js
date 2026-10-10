@@ -152,7 +152,8 @@ function hasGatePass(event) {
 async function blockedByGate(event, contentStore) {
   if (hasGatePass(event)) return false;
   const features = await contentStore.get('features', { type: 'json' });
-  return !!(features && features.turnstileGate === true);
+  // Only a fully configured gate (switched on AND given a site key) is enforced.
+  return !!(features && features.turnstileGate === true && features.turnstileSiteKey);
 }
 
 // User-Agent for calls to Discord, in the "DiscordBot (url, version)" form its

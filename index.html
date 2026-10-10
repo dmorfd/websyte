@@ -1557,10 +1557,10 @@
 <!-- CLOUDFLARE TURNSTILE GATE — PAGE ENTRY
      Full-screen gate that blocks the site until verified. Only renders/shows
      when admin enables features.turnstileGate in Settings → Danger Zone.
-     Uses TURNSTILE_SITE_KEY (set in the main script). -->
+     Uses the site key saved in the admin (features.turnstileSiteKey). -->
 <div id="entryGate">
   <div class="gate-title">Verification required to continue</div>
-  <div class="gate-sub">checking your browser...</div>
+  <div class="gate-sub" id="entryGateSub">checking your browser...</div>
   <div id="entryGateWidget"></div>
 </div>
 <script>
@@ -2378,7 +2378,11 @@ function renderSocials(socials) {
 function applyFeatureToggles(features) {
   const showPresence = features.showDiscordPresence !== false;  // default true
   const showViews    = features.showViews !== false;            // default true
-  const turnstileGate = features.turnstileGate === true;        // default false
+  // The gate only runs when it's switched on AND has a site key, matching the
+  // server (bot-filter blockedByGate).
+  const gateKey = (typeof features.turnstileSiteKey === 'string') ? features.turnstileSiteKey.trim() : '';
+  const turnstileGate = features.turnstileGate === true && !!gateKey;   // default false
+  if (gateKey) TURNSTILE_SITE_KEY = gateKey;
 
   // Cache the gate flag in localStorage so the next page load can show the
   // gate INSTANTLY (before /get-content finishes). The boot script in the
@@ -2395,6 +2399,12 @@ function applyFeatureToggles(features) {
     entryGate.classList.add('show');
     entryGate.classList.remove('hide');
     renderEntryGateWidget();
+    // Cloudflare's script blocked (ad blocker, network) → say so.
+    setTimeout(() => {
+      if (window.__entryGateWidgetId === undefined && !(window.turnstile && window.turnstile.render)) {
+        showGateProblem("Verification couldn't load — Cloudflare's script was blocked (an ad blocker or network filter?). Allow challenges.cloudflare.com and refresh.");
+      }
+    }, 10000);
     // setupEnterScreen will be called by the entry-gate success handler, and
     // the cinematic loader stays held until then so its animation isn't
     // wasted behind the gate.
@@ -4182,7 +4192,23 @@ function setupEnterScreen() {
 }
 
 
-const TURNSTILE_SITE_KEY = "YOUR_TURNSTILE_SITE_KEY";
+// The Turnstile SITE key comes from the admin (Settings → Danger Zone →
+// Cloudflare Turnstile Gate), via get-content's features.
+let TURNSTILE_SITE_KEY = '';
+
+// Tell the visitor why verification can't go ahead instead of leaving the gate
+// on "checking your browser..." forever.
+function showGateProblem(msg) {
+  const sub = document.getElementById('entryGateSub');
+  if (sub) sub.textContent = msg;
+}
+function gateErrorMessage(code) {
+  const c = String(code || '');
+  if (/^1102/.test(c)) return "Verification couldn't start: this site's domain isn't on the Turnstile widget's hostname list (" + c + ").";
+  if (/^1101|^400020/.test(c)) return "Verification couldn't start: the Turnstile site key is wrong (" + c + ").";
+  if (/^300|^600/.test(c)) return "Verification failed (" + c + "). Refresh the page to try again.";
+  return "Verification couldn't load" + (c ? ' (' + c + ')' : '') + '. Refresh the page to try again.';
+}
 
 // Called by Turnstile's api.js after it loads.
 window.onTurnstileLoad = function () {
@@ -4202,6 +4228,10 @@ function renderEntryGateWidget() {
   const container = document.getElementById('entryGateWidget');
   if (!container) {
     console.warn('[entry-gate] container element missing');
+    return;
+  }
+  if (!TURNSTILE_SITE_KEY) {
+    showGateProblem("Verification isn't set up yet (no Turnstile site key).");
     return;
   }
   console.log('[entry-gate] rendering widget with sitekey:', TURNSTILE_SITE_KEY);
@@ -4248,7 +4278,10 @@ function renderEntryGateWidget() {
       },
       'error-callback': (err) => {
         console.warn('[entry-gate] Cloudflare error:', err);
-        try { window.turnstile.reset(window.__entryGateWidgetId); } catch {}
+        showGateProblem(gateErrorMessage(err));
+        // Configuration errors won't fix themselves — don't loop on them.
+        if (!/^110[12]|^400020/.test(String(err || ''))) { try { window.turnstile.reset(window.__entryGateWidgetId); } catch {} }
+        return true;   // handled: stops Turnstile's own console error
       },
       'expired-callback': () => {
         console.log('[entry-gate] token expired, resetting');
@@ -4258,6 +4291,7 @@ function renderEntryGateWidget() {
     console.log('[entry-gate] widget rendered, id:', window.__entryGateWidgetId);
   } catch (err) {
     console.error('[entry-gate] render threw:', err);
+    showGateProblem(gateErrorMessage(''));
   }
 }
 

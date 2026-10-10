@@ -222,6 +222,12 @@ const FEATURES_SPEC = {
   siteFont: (v) => fontName(v, 'Site font'),
   siteFontUrl: (v) => url(v, 'Site font URL'),
   siteFontHandle: (v) => bool(v, 'Site font on the display handle'),
+  // Cloudflare Turnstile SITE key (public — it's in the page anyway).
+  turnstileSiteKey: (v) => {
+    const s = text(v, 'Turnstile site key', 100);
+    if (s && !/^[0-9A-Za-z_-]{10,100}$/.test(s)) fail('That doesn\'t look like a Turnstile site key (it starts with 0x…).');
+    return s;
+  },
 };
 
 const ADMIN_THEME_SPEC = {
@@ -316,7 +322,12 @@ const HANDLERS = {
   },
   features: {
     blob: 'features',
-    build: (body, cur) => { const r = applySpec(body, FEATURES_SPEC, cur); requireTouched(r.touched, 'features'); return r.next; },
+    build: (body, cur) => {
+      const r = applySpec(body, FEATURES_SPEC, cur);
+      requireTouched(r.touched, 'features');
+      if (r.next.turnstileGate === true && !r.next.turnstileSiteKey) fail('Add the Turnstile site key before turning the gate on.');
+      return r.next;
+    },
   },
   'guild-tag': {
     blob: 'guild-tag',
