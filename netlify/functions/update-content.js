@@ -292,6 +292,23 @@ const HANDLERS = {
     blob: 'enter-screen',
     build: (body, cur) => { const r = applySpec(body, ENTER_SCREEN_SPEC, cur); requireTouched(r.touched, 'enter-screen'); return r.next; },
   },
+  // "Games I like": up to six cover tiles, three per row on the public site.
+  games: {
+    blob: 'games',
+    build: (body) => {
+      if (!Array.isArray(body.games)) fail('Games must be a list.');
+      if (body.games.length > 6) fail('At most 6 games.');
+      const games = body.games.map((gm, i) => {
+        if (!isObj(gm)) fail(`Game ${i + 1} is invalid.`);
+        return {
+          title: text(gm.title, `Game ${i + 1} title`, 80, { required: true }),
+          imageUrl: url(gm.imageUrl, `Game ${i + 1} image URL`, { relative: true }) || fail(`Game ${i + 1} needs an image URL.`),
+          url: url(gm.url, `Game ${i + 1} link`),
+        };
+      });
+      return { games };
+    },
+  },
   'favorite-game': {
     blob: 'favorite-game',
     build: (body, cur) => { const r = applySpec(body, FAVORITE_GAME_SPEC, cur); requireTouched(r.touched, 'favorite-game'); return r.next; },

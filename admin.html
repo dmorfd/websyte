@@ -1531,6 +1531,7 @@ function ContentEditor({ data, reload }) {
   const [siteVideo, setSiteVideo] = useState(data.videoBg?.url || "");
   const [favGame, setFavGame] = useState(data.favoriteGame || { name: "", coverUrl: "", blurb: "", url: "" });
   const [socials, setSocials] = useState(Array.isArray(data.socials) ? data.socials : []);
+  const [games, setGames] = useState(Array.isArray(data.games) ? data.games : []);
   const [typeSpeed, setTypeSpeed] = useState(data.theme?.typeSpeed ?? 55);
   const [delSpeed, setDelSpeed] = useState(data.theme?.deleteSpeed ?? 30);
   const [holdMs, setHoldMs] = useState(data.theme?.holdTime ?? 4500);
@@ -1551,6 +1552,7 @@ function ContentEditor({ data, reload }) {
     setSiteVideo(data.videoBg?.url || "");
     setFavGame(data.favoriteGame || { name: "", coverUrl: "", blurb: "", url: "" });
     setSocials(Array.isArray(data.socials) ? data.socials : []);
+    setGames(Array.isArray(data.games) ? data.games : []);
     setTypeSpeed(data.theme?.typeSpeed ?? 55);
     setDelSpeed(data.theme?.deleteSpeed ?? 30);
     setHoldMs(data.theme?.holdTime ?? 4500);
@@ -1588,6 +1590,10 @@ function ContentEditor({ data, reload }) {
       await apiUpdate({ type: "favorite-game", name: favGame.name || "", coverUrl: favGame.coverUrl || "", blurb: favGame.blurb || "", url: favGame.url || "" });
       const cleanSoc = socials.map((s) => ({ name: (s.name || "").trim(), description: (s.description || "").trim(), iconUrl: (s.iconUrl || "").trim(), linkUrl: (s.linkUrl || "").trim(), showIcon: s.showIcon !== false })).filter((s) => s.name && s.linkUrl);
       await apiUpdate({ type: "socials", socials: cleanSoc });
+      const cleanGames = games.map((g) => ({ title: (g.title || "").trim(), imageUrl: (g.imageUrl || "").trim(), url: (g.url || "").trim() })).filter((g) => g.title || g.imageUrl || g.url);
+      const half = cleanGames.findIndex((g) => !g.title || !g.imageUrl);
+      if (half >= 0) throw new Error(`Game ${half + 1} needs both a title and an image URL`);
+      await apiUpdate({ type: "games", games: cleanGames });
       showPub("published ✓"); afterSave();
     } catch (e) { showPub(e.message, "err"); }
     setPubBusy(false);
@@ -1772,6 +1778,37 @@ function ContentEditor({ data, reload }) {
           <button className="add-row" style={{ maxWidth: 220 }} onClick={() => socials.length < 5 && setSocials([...socials, { name: "", description: "", iconUrl: "", linkUrl: "", showIcon: true }])} disabled={socials.length >= 5}>+ Add social link</button>
         </div>
 
+        {/* G · GAMES I LIKE */}
+        <div className="glass span-all">
+          <div className="grp-head">
+            <span className="grp-letter">G</span><span className="grp-title">Games I like</span>
+            <span className="lbl-count" style={{ marginLeft: "auto" }}>{games.length} / 6</span>
+          </div>
+          <div className="field-sub" style={{ marginBottom: 12 }}>
+            Up to six games, three per row on the site. Each needs a title (shown when visitors hover the cover) and a cover image — upload it to R2 and paste the link. Portrait art (3:4, like Discord's game covers) fits best. The link is optional; visitors get a "leave the site?" check first.
+          </div>
+          <div className="row-list">
+            {games.map((g, i) => {
+              const set = (k, v) => setGames(games.map((x, idx) => (idx === i ? { ...x, [k]: v } : x)));
+              const move = (d) => { const n = [...games]; const j = i + d; if (j < 0 || j >= n.length) return; [n[i], n[j]] = [n[j], n[i]]; setGames(n); };
+              return (
+                <div key={i} className="rep-row" style={{ flexWrap: "wrap", alignItems: "center" }}>
+                  <div style={{ width: 36, height: 48, borderRadius: 6, overflow: "hidden", flex: "0 0 auto", background: "rgba(255,255,255,0.05)", border: "1px solid var(--line-2)" }}>
+                    {(g.imageUrl || "").trim() ? <img src={g.imageUrl.trim()} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} onLoad={(e) => { e.currentTarget.style.visibility = "visible"; }} /> : null}
+                  </div>
+                  <input className="input" style={{ flex: "1 1 130px", minWidth: 110 }} placeholder="game title" maxLength={80} value={g.title || ""} onChange={(e) => set("title", e.target.value)} aria-label={"Game " + (i + 1) + " title"} />
+                  <input className="input" style={{ flex: "1.6 1 160px", minWidth: 130, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} placeholder="https://…r2.dev/cover.jpg" value={g.imageUrl || ""} onChange={(e) => set("imageUrl", e.target.value)} aria-label={"Game " + (i + 1) + " image URL"} />
+                  <input className="input" style={{ flex: "1.2 1 130px", minWidth: 120, fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} placeholder="link (optional)" value={g.url || ""} onChange={(e) => set("url", e.target.value)} aria-label={"Game " + (i + 1) + " link"} />
+                  <button className="rep-x" onClick={() => move(-1)} disabled={i === 0} title="move up" aria-label={"Move game " + (i + 1) + " up"}>↑</button>
+                  <button className="rep-x" onClick={() => move(1)} disabled={i === games.length - 1} title="move down" aria-label={"Move game " + (i + 1) + " down"}>↓</button>
+                  <button className="rep-x" onClick={() => setGames(games.filter((_, idx) => idx !== i))} title="remove" aria-label={"Remove game " + (i + 1)}>✕</button>
+                </div>
+              );
+            })}
+          </div>
+          <button className="add-row" style={{ maxWidth: 220 }} onClick={() => games.length < 6 && setGames([...games, { title: "", imageUrl: "", url: "" }])} disabled={games.length >= 6}>+ Add game</button>
+        </div>
+
       </div>
     </div>
   );
@@ -1786,8 +1823,8 @@ function UIEditor({ data, reload }) {
   const [favC2, setFavC2] = useState(t.favGameColor2 || "#c0392b");
   const [favGrad, setFavGrad] = useState(t.favGameGradient !== false);
   const [favAnim, setFavAnim] = useState(t.favGameAnimate !== false);
-  const SECTION_LABELS = { discord: "Discord Profile", about: "About Me", interests: "Interests", favgame: "Favorite Game", watch: "Watch", socials: "Find Me Here" };
-  const DEFAULT_SECTIONS = ["discord", "about", "interests", "favgame", "watch", "socials"].map((id) => ({ id, enabled: true }));
+  const SECTION_LABELS = { discord: "Discord Profile", about: "About Me", interests: "Interests", favgame: "Favorite Game", games: "Games I Like", watch: "Watch", socials: "Find Me Here" };
+  const DEFAULT_SECTIONS = ["discord", "about", "interests", "favgame", "games", "watch", "socials"].map((id) => ({ id, enabled: true }));
   // Drop ids for sections that no longer exist (e.g. from an older saved order).
   const knownSections = (list) => (Array.isArray(list) ? list.filter((s) => s && SECTION_LABELS[s.id]) : []);
   const [sections, setSections] = useState(knownSections(data.sections).length ? knownSections(data.sections) : DEFAULT_SECTIONS);

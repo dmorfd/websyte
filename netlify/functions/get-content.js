@@ -113,7 +113,7 @@ const DEFAULT_DISCORD_BANNER = {
 
 const DEFAULT_FAVORITE_GAME = { name: '', coverUrl: '', blurb: '', url: '' };
 
-const SECTION_IDS = ['discord', 'about', 'interests', 'favgame', 'watch', 'socials'];
+const SECTION_IDS = ['discord', 'about', 'interests', 'favgame', 'games', 'watch', 'socials'];
 const DEFAULT_SECTIONS = SECTION_IDS.map((id) => ({ id, enabled: true }));
 
 const DEFAULT_FEATURES = { showDiscordPresence: true, showViews: true, turnstileGate: false, faviconUrl: '', siteFont: '', siteFontUrl: '' };
@@ -190,7 +190,7 @@ const json = (statusCode, body, headers) => ({
 const PUBLIC_BLOBS = [
   'bio', 'interests', 'interest-meta', 'song', 'youtube', 'handle', 'about', 'theme',
   'custom-badges', 'video-bg', 'discord-banner', 'favorite-game', 'sections', 'features',
-  'socials', 'enter-screen', 'guild-tag', 'views', 'content-rev',
+  'socials', 'games', 'enter-screen', 'guild-tag', 'views', 'content-rev',
 ];
 const ADMIN_BLOBS = ['presets', 'admin-theme'];
 
@@ -255,6 +255,8 @@ exports.handler = async (event) => {
     sections: normalizeSections(obj(b.sections).sections || DEFAULT_SECTIONS),
     features: { ...DEFAULT_FEATURES, ...obj(b.features) },
     socials: Array.isArray(obj(b.socials).socials) ? obj(b.socials).socials : DEFAULT_SOCIALS,
+    // "Games I like" grid: up to six {title, imageUrl, url} (Content Editor → G).
+    games: Array.isArray(obj(b.games).games) ? obj(b.games).games : [],
     enterScreen: { ...DEFAULT_ENTER_SCREEN, ...obj(b['enter-screen']) },
     guildTag: { ...DEFAULT_GUILD_TAG, ...obj(b['guild-tag']) },
     // Whose Discord profile both pages show (via Lanyard). Not a secret — it's

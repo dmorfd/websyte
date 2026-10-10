@@ -249,6 +249,13 @@ styles the line under the welcome message. Any font can be a Google Fonts name
 or a font file on R2; font files get their own internal name, so naming one
 like a built-in font is fine.
 
+**Games I like.** Content Editor → G Games I like: up to six games, shown on
+the site as a 3-wide grid of cover tiles. Each needs a title (the hover tooltip)
+and a cover image URL (R2; portrait 3:4 art fits best); a link is optional and
+goes through the same "leave the site?" check as the favorite game. Show, hide
+or move the section in UI Editor → Sections. It stays hidden until a game is
+added.
+
 **Social link images.** Each social link has an "image" switch in Content
 Editor → F Social links; off hides the image on the side of that card.
 

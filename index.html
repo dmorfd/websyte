@@ -903,6 +903,95 @@
       .favgame-cover{animation:none;}
     }
 
+    /* ══ GAMES I LIKE ══
+       Up to six portrait cover tiles, three per row, on a glass panel. Hover
+       (or keyboard focus / a tap on touch) gives the art a faint zoom, a soft
+       gold edge and a title tooltip in the same style as the badge tooltips. */
+    .games-section{width:100%;}
+    .games-card{
+      position:relative;width:100%;padding:.85rem;
+      background:var(--glass);border:1px solid var(--glass-border);
+      backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    }
+    .games-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem;}
+    .game-slot{
+      position:relative;display:block;aspect-ratio:3 / 4;border-radius:10px;
+      outline:none;text-decoration:none;cursor:default;-webkit-tap-highlight-color:transparent;
+    }
+    a.game-slot{cursor:pointer;}
+    .game-art{
+      position:absolute;inset:0;border-radius:inherit;overflow:hidden;
+      background:linear-gradient(160deg,rgba(212,168,75,.10),rgba(192,57,43,.08));
+      border:1px solid rgba(255,235,235,.10);
+      box-shadow:0 12px 26px -14px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,238,238,.06);
+      transition:border-color .35s ease,box-shadow .35s ease;
+      transform:translateZ(0);   /* keeps the zooming art clipped to the corners in Safari */
+    }
+    .game-art img{
+      width:100%;height:100%;object-fit:cover;display:block;
+      transform:scale(1);transition:transform .6s cubic-bezier(.2,.8,.2,1);
+    }
+    /* a gentle bottom shade so bright covers sit in the dark theme */
+    .game-art::after{
+      content:'';position:absolute;inset:0;pointer-events:none;
+      background:linear-gradient(180deg,transparent 58%,rgba(8,3,5,.38) 100%);
+      transition:opacity .35s ease;
+    }
+    .game-fallback{
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      padding:.6rem;text-align:center;line-height:1.4;
+      font-family:'Noto Serif JP',serif;font-size:.78rem;color:rgba(255,235,235,.82);
+    }
+    /* title tooltip, centred above the tile (edge columns align to their edge) */
+    .game-slot::after{
+      content:attr(data-tip);
+      position:absolute;bottom:calc(100% + 9px);left:50%;
+      transform:translate(-50%,4px);
+      max-width:min(240px,80vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+      background:rgba(8,3,5,.96);color:rgba(255,235,235,.95);
+      font-family:'DM Sans',sans-serif;font-size:.72rem;font-weight:500;letter-spacing:.02em;
+      padding:.42rem .7rem;border:1px solid rgba(212,168,75,.3);border-radius:5px;
+      box-shadow:0 6px 16px rgba(0,0,0,.5);
+      pointer-events:none;opacity:0;z-index:50;
+      transition:opacity .16s ease,transform .16s ease;
+    }
+    .game-slot::before{
+      content:'';position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(-50%);
+      border-left:6px solid transparent;border-right:6px solid transparent;
+      border-top:6px solid rgba(212,168,75,.3);
+      pointer-events:none;opacity:0;z-index:50;transition:opacity .16s ease;
+    }
+    .game-slot:nth-child(3n+1)::after{left:0;transform:translate(0,4px);}
+    .game-slot:nth-child(3n)::after{left:auto;right:0;transform:translate(0,4px);}
+    .game-slot:focus-visible::after,.game-slot:focus-visible::before,
+    .game-slot.tip-on::after,.game-slot.tip-on::before{opacity:1;}
+    .game-slot:focus-visible::after,.game-slot.tip-on::after{transform:translate(-50%,0);}
+    .game-slot:nth-child(3n+1):focus-visible::after,.game-slot:nth-child(3n+1).tip-on::after,
+    .game-slot:nth-child(3n):focus-visible::after,.game-slot:nth-child(3n).tip-on::after{transform:translate(0,0);}
+    .game-slot:focus-visible .game-art{border-color:rgba(212,168,75,.6);box-shadow:0 0 0 2px rgba(212,168,75,.4);}
+    /* hover only where hover exists — on touch it would need two taps */
+    @media (hover:hover){
+      .game-slot:hover::after,.game-slot:hover::before{opacity:1;}
+      .game-slot:hover::after{transform:translate(-50%,0);}
+      .game-slot:nth-child(3n+1):hover::after,.game-slot:nth-child(3n):hover::after{transform:translate(0,0);}
+      .game-slot:hover .game-art img{transform:scale(1.06);}
+      .game-slot:hover .game-art{
+        border-color:rgba(212,168,75,.42);
+        box-shadow:0 16px 32px -14px rgba(0,0,0,.85),0 0 0 1px rgba(212,168,75,.16),0 0 20px -6px rgba(212,168,75,.3);
+      }
+      .game-slot:hover .game-art::after{opacity:.4;}
+    }
+    @media (max-width:480px){
+      .games-card{padding:.65rem;}
+      .games-grid{gap:.5rem;}
+      .game-slot{border-radius:8px;}
+      .game-slot::after{font-size:.66rem;}
+    }
+    @media (prefers-reduced-motion: reduce){
+      .game-art img,.game-slot::after{transition:none;}
+      .game-slot:hover .game-art img{transform:none;}
+    }
+
     /* Scroll reveal */
     .scroll-reveal{opacity:0;transform:translateY(32px);transition:opacity 1s cubic-bezier(.22,1,.36,1),transform 1s cubic-bezier(.22,1,.36,1);width:100%;}
     .scroll-reveal.visible{opacity:1;transform:translateY(0);}
@@ -1404,7 +1493,7 @@
        box-shadow cleanly takes over.
        ═══════════════════════════════════════════════════════════════ */
     .about-card,.interest-card,.dprof-card,.favgame-card,
-    .yt-card,.link-card{
+    .yt-card,.link-card,.games-card{
       border-radius:14px;
       box-shadow:
         0 14px 34px -16px rgba(0,0,0,.62),
@@ -1419,7 +1508,7 @@
     .dprof-banner{border-radius:14px 14px 0 0;}
     /* A touch warmer, more luminous edge than the flat crimson border. */
     .about-card,.interest-card,.dprof-card,
-    .yt-card,.link-card{
+    .yt-card,.link-card,.games-card{
       border-color:rgba(224,120,140,.26);
     }
     /* Give the left accent bars a soft gold-crimson bloom so the cards feel lit. */
@@ -1865,6 +1954,14 @@
     </a>
   </div>
 
+  <!-- 3b. GAMES I LIKE — up to six cover tiles (Admin → Content Editor → G) -->
+  <div class="scroll-reveal games-section" id="gamesSection" style="display:none;transition-delay:.08s;">
+    <p class="section-label" style="margin-bottom:.75rem;">games i like</p>
+    <div class="games-card">
+      <div class="games-grid" id="gamesGrid"></div>
+    </div>
+  </div>
+
   <!-- 4. WATCH -->
   <div class="scroll-reveal watch-section" style="transition-delay:.11s;width:100%;">
     <p class="section-label" style="margin-bottom:.75rem;">watch</p>
@@ -2170,6 +2267,7 @@ async function loadContent() {
 
     // ══ FAVORITE GAME ══
     applyFavoriteGame(data.favoriteGame);
+    applyGames(data.games);
 
     // ══ SECTION ORDER / VISIBILITY ══
     applySections(data.sections);
@@ -2346,6 +2444,7 @@ const SECTION_SELECTORS = {
   about:     '.about-section',
   interests: '.interests-section',
   favgame:   '.favgame-section',
+  games:     '.games-section',
   watch:     '.watch-section',
   socials:   '.links-section',
 };
@@ -2393,6 +2492,67 @@ function applyFavoriteGame(fg) {
   }
   section.style.display = '';
 }
+
+// "Games I like": up to six {title, imageUrl, url} tiles. Hidden when empty.
+// A tile with a link opens the same leave-site confirmation as the favorite
+// game card; on touch, a tap on a tile without a link shows its title.
+function applyGames(list) {
+  const section = document.getElementById('gamesSection');
+  const grid = document.getElementById('gamesGrid');
+  if (!section || !grid) return;
+  const games = (Array.isArray(list) ? list : [])
+    .filter((g) => g && typeof g.title === 'string' && g.title.trim() && typeof g.imageUrl === 'string' && g.imageUrl.trim())
+    .slice(0, 6);
+  const key = JSON.stringify(games);
+  if (grid.dataset.key === key) return;   // unchanged since the last load
+  grid.dataset.key = key;
+  grid.innerHTML = '';
+  if (!games.length) { section.style.display = 'none'; return; }
+  for (const g of games) {
+    const title = g.title.trim();
+    const link = (typeof g.url === 'string' && /^https?:\/\//i.test(g.url.trim())) ? g.url.trim() : '';
+    const slot = document.createElement(link ? 'a' : 'div');
+    slot.className = 'game-slot';
+    slot.dataset.tip = title;
+    slot.setAttribute('aria-label', title);
+    if (link) {
+      slot.href = link;
+      slot.target = '_blank';
+      slot.rel = 'noopener noreferrer';
+      slot.addEventListener('click', (e) => { e.preventDefault(); openFavGameConfirm(link); });
+    } else {
+      slot.tabIndex = 0;
+      slot.setAttribute('role', 'img');
+      slot.addEventListener('click', () => {
+        grid.querySelectorAll('.game-slot.tip-on').forEach((el) => { if (el !== slot) el.classList.remove('tip-on'); });
+        slot.classList.toggle('tip-on');
+      });
+    }
+    const art = document.createElement('span');
+    art.className = 'game-art';
+    const img = document.createElement('img');
+    img.src = g.imageUrl.trim();
+    img.alt = title;
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.onerror = () => {
+      img.remove();
+      const fb = document.createElement('span');
+      fb.className = 'game-fallback';
+      fb.textContent = title;
+      art.appendChild(fb);
+    };
+    art.appendChild(img);
+    slot.appendChild(art);
+    grid.appendChild(slot);
+  }
+  section.style.display = '';
+}
+// Tapping elsewhere hides a tapped tile's title again.
+document.addEventListener('click', (e) => {
+  if (e.target.closest && e.target.closest('.game-slot')) return;
+  document.querySelectorAll('.game-slot.tip-on').forEach((el) => el.classList.remove('tip-on'));
+});
 
 // Leave-site confirmation for the favorite-game card.
 let __favGamePendingUrl = '';
@@ -3002,7 +3162,7 @@ function applyUiVisuals(theme) {
   // Apply styles directly to elements via .style.setProperty(prop, val, 'important').
   // This bypasses the CSS specificity battle entirely — inline !important ALWAYS wins
   // over stylesheet rules, regardless of how many class selectors they chain.
-  const otherCardsList = ['interest-card','about-card','dprof-card','yt-card','link-card','soundbar-section','favgame-card'];
+  const otherCardsList = ['interest-card','about-card','dprof-card','yt-card','link-card','soundbar-section','favgame-card','games-card'];
 
   // Apply to non-hero cards
   otherCardsList.forEach(cls => {
