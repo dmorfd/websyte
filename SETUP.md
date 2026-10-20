@@ -259,7 +259,7 @@ runs the Discord bot. This site is a client of it.
   font, colours, density, likes, overlay, video background). It is **one
   shared setting**: publishing it changes `/gallery` on arandomperson.dev too,
   and their changes show up here — last write wins.
-- **UI Editor → Sidebar** colours this site's `/gallery` drawer only (panel,
+- **UI Editor → Sidebar** colours this site's navigation drawer (the ☰ on the home page and on `/gallery`) only (panel,
   accent, transparency; blank colours follow the site accent and background).
 - Setup on Netlify: `GALLERY_API`, `GALLERY_KEY` (Functions scope),
   `SITE_OWNER_DISCORD_ID`, then redeploy. arandomperson.dev must have this site

@@ -413,7 +413,7 @@
 <div class="nav-scrim" id="navScrim" aria-hidden="true"></div>
 <aside class="nav-side" id="navSide" aria-hidden="true" aria-label="Site navigation">
   <div class="nav-side-brand">
-    <span class="nav-side-mark"><img id="navSideAvatar" src="/favicon.png" alt=""/></span>
+    <span class="nav-side-mark"><img id="navSideAvatar" src="/favicon.png" alt="" onerror="if(this.src.indexOf('/favicon.png')!==-1)this.style.visibility='hidden';"/></span>
     <span class="nav-side-brandtext">
       <span class="nav-side-title" id="navSideTitle"></span>
       <span class="nav-side-sub">navigation</span>
@@ -691,7 +691,7 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
     const mark = document.getElementById('navSideAvatar');
     if (mark && cached && /^https?:\/\//.test(cached)) {
       mark.addEventListener('error', () => { mark.src = '/favicon.png'; }, { once: true });
-      mark.src = cached;
+      mark.style.visibility = ''; mark.src = cached;
     }
   } catch (e) {}
 
@@ -1391,7 +1391,7 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
         if (!u || !u.avatar) return;
         const url = 'https://cdn.discordapp.com/avatars/' + id + '/' + u.avatar + '.' + (u.avatar.startsWith('a_') ? 'gif' : 'png') + '?size=256';
         const mark = document.getElementById('navSideAvatar');
-        if (mark && mark.src !== url) mark.src = url;
+        if (mark && mark.src !== url) { mark.style.visibility = ''; mark.src = url; }
         try { localStorage.setItem('avatarUrlCache', url); } catch (e) {}
       })
       .catch(() => {});
