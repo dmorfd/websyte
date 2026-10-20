@@ -29,13 +29,13 @@ This copy keeps the following.
 
 ---
 
-## 1. Files (27)
+## 1. Files (29)
 
 | # | File | Why it's here |
 |---|---|---|
 | 1 | `index.html` | Public site (trimmed) |
 | 2 | `admin.html` | Admin panel (trimmed) |
-| 3 | `netlify.toml` | Has only `[build]` and `[functions]`. Runs `npm install`, publishes the root, and bundles functions with esbuild, keeping `@netlify/blobs` external |
+| 3 | `netlify.toml` | `[build]`, `[functions]` and the `/gallery` rewrites. Runs `npm install`, publishes the root, and bundles functions with esbuild, keeping `@netlify/blobs` external |
 | 4 | `package.json` | The one dependency, `@netlify/blobs` (`^10.7.13`). Node ≥ 18 |
 | 5 | `.gitignore` | `node_modules/`, `.netlify/`, `.env*` and OS/log clutter |
 | 6 | `netlify/functions/get-content.js` | The single read endpoint. Holds every `DEFAULT_*` object and merges them over the stored blobs |
@@ -57,7 +57,9 @@ This copy keeps the following.
 | 22 | `cover.png` | **Copy in.** Keep the filename and replace the artwork (see §4) |
 | 23–25 | `discord-icon.png`, `spotify-icon.png`, `steam-icon.png` | **Copy in** unchanged. They're social-link icon URLs you paste in the admin |
 | 26 | `loader-sfx.mp3` | **Copy in** unchanged. The cinematic loader's ambient loop (see §4) |
-| 27 | `SETUP.md` | This file |
+| 27 | `gallery.html` | The shared gallery's page (from arandomperson.dev), at `/gallery` and `/gallery.html`. See "Shared gallery" in §6 |
+| 28 | `netlify/functions/gallery-proxy.js` | Admin → Gallery's calls to the shared gallery, with `GALLERY_KEY` attached on the server |
+| 29 | `SETUP.md` | This file |
 
 The 6 binary assets (rows 21–26) aren't in the repo. Copy them from your site
 into the repo root next to `index.html`.
@@ -83,8 +85,11 @@ redeploy.
 | Variable | Used by | Notes |
 |---|---|---|
 | `ADMIN_KEY` | `lib/admin-auth.js` (every admin endpoint goes through it) | The admin password. Make it long and random, e.g. `openssl rand -base64 32`. Surrounding whitespace is trimmed. If it's missing, admin endpoints answer 500 (they fail closed) |
-| `DISCORD_BOT_TOKEN` | `discord-banner-live.js`, `get-guild-preview.js` | Bot token only, no `Bot ` prefix. Without it the banner falls back to the admin's static banner, and the guild preview uses the public widget, if the server has one enabled |
-| `DISCORD_USER_ID` | `get-content.js` (both pages), `discord-banner-live.js`, `get-guild-preview.js` | The friend's numeric user ID. **This one value decides whose Discord profile the site shows**: both pages read it from `get-content` and ask Lanyard for that user's avatar, name, Nitro name effect, guild tag, status and Spotify. The guild preview only looks up the server in this user's guild tag |
+| `DISCORD_BOT_TOKEN` | `discord-banner-live.js`, `get-guild-preview.js` | Bot token only, no `Bot ` prefix. Without it the live banner comes from the shared gallery's server (when `GALLERY_API` is set and the ID is on its roster), otherwise from the admin's static banner; the guild preview uses the public widget, if the server has one enabled |
+| `SITE_OWNER_DISCORD_ID` | `get-content.js` (both pages and the gallery), `discord-banner-live.js`, `get-guild-preview.js` | The friend's numeric user ID. **This one value decides whose Discord profile the site shows**: every page reads it from `get-content` and asks Lanyard for that user's avatar, name, Nitro name effect, guild tag, status and Spotify. The guild preview only looks up the server in this user's guild tag |
+| `DISCORD_USER_ID` | as above | The older name for the same ID. Used only when `SITE_OWNER_DISCORD_ID` isn't set, so an existing deploy keeps working |
+| `GALLERY_API` | `gallery-proxy.js`, `discord-banner-live.js` | `https://arandomperson.dev/.netlify/functions` — the shared gallery's server. Must be `https://` |
+| `GALLERY_KEY` | `gallery-proxy.js` | The `galk_…` key arandomperson.dev issued for this site. **Secret**: scope it to Functions, and never put it in a page. Only the proxy reads it, after checking `ADMIN_KEY` |
 | `DISCORD_WEBHOOK_URL` | `notify-visit.js` | Must be a `https://discord.com/api/webhooks/…` URL. If it's unset, visit pings are skipped silently. Pings include the visitor's **IP address**, so post them to a private channel only |
 | `TURNSTILE_SECRET_KEY` | `verify-turnstile.js`, `bot-filter.js` | Verifies Turnstile tokens, and also signs the HMAC gate-pass cookie. Rotating it signs every visitor out of the gate (they just solve it again) |
 | `NETLIFY_SITE_ID` | every function: Blobs storage, rate limits and the lockout | Site configuration → Site details → Site ID |
@@ -226,6 +231,32 @@ Only two things in `index.html` are still typed in by hand, both optional:
 ---
 
 ## 6. Behaviour notes and decisions
+
+**Shared gallery (`/gallery`).** One gallery shared with arandomperson.dev,
+which owns the data (photos, sections, comments, likes, the gallery's look) and
+runs the Discord bot. This site is a client of it.
+- Uploading: `/gallery` in Discord. The bot links this site's panel; it opens
+  on Admin → Gallery when the link ends in `#gallery`.
+- Publishing: **Admin → Gallery**. Title, describe, date, sort into sections
+  and publish your own photos; edit the shared section list and gallery text;
+  read and delete comments on your photos; remove or permanently delete them.
+  Press **Publish changes** to save edits; Remove / Delete / comment deletes act
+  at once (publish or reset pending edits first). The other owner's photos
+  can't be changed from here (`403 not-yours`) — that's the system working.
+- The page `gallery.html` is arandomperson.dev's own page, kept as it is so the
+  gallery looks the same on both sites. Its photo, comment and like requests go
+  **straight from the visitor's browser** to arandomperson.dev (its rate limits
+  count per visitor). Only `get-content` stays on this site: it gives the
+  drawer this site's accent and background colours, favicon and Discord avatar.
+- The gallery's look (colours, title font, video, overlay) is set from
+  arandomperson.dev's panel; this panel doesn't edit it.
+- Setup on Netlify: `GALLERY_API`, `GALLERY_KEY` (Functions scope),
+  `SITE_OWNER_DISCORD_ID`, then redeploy. arandomperson.dev must have this site
+  on its roster with the exact origin `https://dmorfd.netlify.app`; otherwise
+  browsers refuse the gallery with a CORS error and the page says it couldn't
+  load.
+- Nothing links to `/gallery` from the main page by default. To add one, make a
+  social link (Content Editor → F) pointing at `https://<this site>/gallery`.
 
 **Site accent (new, editable).**
 - The glass look comes from a single accent colour, through

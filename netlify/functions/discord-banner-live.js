@@ -38,7 +38,9 @@ async function viaGallery(userId) {
     const res = await fetch(`${galleryApi()}/discord-banner-live?user=${userId}`, { signal: ac.signal, redirect: 'error' });
     const d = await res.json().catch(() => null);
     if (!res.ok || !d || typeof d !== 'object') return json(502, { ok: false, reason: 'gallery-error', status: res.status });
-    if (d.ok !== true) return json(200, { ok: false, reason: typeof d.reason === 'string' ? d.reason.slice(0, 40) : 'unavailable' }, CACHED(300));
+    // Not on the roster (or nothing to give): answer like "no token", which
+    // tells the page to keep Lanyard's avatar decoration and stop polling.
+    if (d.ok !== true) return json(200, { ok: false, reason: 'no-token', detail: typeof d.reason === 'string' ? d.reason.slice(0, 40) : 'unavailable' }, CACHED(300));
     const str = (v) => (typeof v === 'string' && /^https:\/\//.test(v) ? v : '');
     const dns = d.displayNameStyles;
     return json(200, {
