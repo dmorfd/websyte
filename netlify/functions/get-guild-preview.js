@@ -6,7 +6,7 @@
 // the guild preview endpoint, falling back to the public widget JSON when the
 // preview isn't available. CDN-cached per guildId for ten minutes.
 // The bot token is only ever spent on the OWNER's own guild — the one shown in
-// their Discord guild tag (primary_guild of DISCORD_USER_ID) — so the endpoint
+// their Discord guild tag (primary_guild of SITE_OWNER_DISCORD_ID) — so the endpoint
 // can't be used to look up arbitrary servers the bot happens to be in.
 const { rateLimit, tooManyRequests } = require('./lib/rate-limit');
 
@@ -65,7 +65,7 @@ exports.handler = async (event) => {
   if (!limit.ok) return tooManyRequests(limit);
 
   const token = process.env.DISCORD_BOT_TOKEN;
-  const userId = String(process.env.DISCORD_USER_ID || '').trim();
+  const userId = [process.env.SITE_OWNER_DISCORD_ID, process.env.DISCORD_USER_ID].map((v) => String(v || '').trim()).find(Boolean) || '';
   try {
     // With a bot configured, only the owner's own guild is ever looked up.
     let useBot = false;

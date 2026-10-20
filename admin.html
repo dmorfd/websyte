@@ -353,6 +353,14 @@
   .sched-row.tiles button.sched-cell:hover{transform:translateY(-2px);}
   .sched-row.tiles button.sched-cell:hover .sched-d{transform:none;}
   .sched-quick{display:flex;gap:6px;flex-wrap:wrap;}
+  /* Gallery page: one row per photo, thumbnail left. */
+  select.input{appearance:auto;cursor:pointer;}
+  select.input option{background:#140d12;color:var(--ink);}
+  .g-fieldset{border:0;padding:0;margin:0;min-width:0;}
+  .g-photo{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;padding:12px;border-radius:12px;border:1px solid var(--line-2);background:rgba(255,255,255,0.02);}
+  .g-photo-thumb{display:block;aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:rgba(255,255,255,0.04);}
+  .g-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  @media (max-width:560px){ .g-photo{grid-template-columns:1fr;} }
   @media (max-width:520px){ .sched-n{font-size:8.5px;letter-spacing:.08em;} .sched-row.tiles{gap:3px;} }
   @keyframes favNameFlow{0%{background-position:200% 50%;}100%{background-position:0% 50%;}}
 
@@ -631,6 +639,7 @@ const NAV = [
   { id: "analytics", label: "Analytics", icon: Ico.share },
   { id: "content", label: "Content Editor", icon: Ico.doc },
   { id: "schedule", label: "Schedule", icon: Ico.doc },
+  { id: "gallery", label: "Gallery", icon: Ico.layers },
   { id: "ui", label: "UI Editor", icon: Ico.ui },
   { id: "presets", label: "Presets", icon: Ico.layers },
   { id: "badges", label: "Discord Badges", icon: Ico.badge },
@@ -1989,6 +1998,371 @@ function SchedulePage({ data, reload }) {
           <div className="field-sub">Colors, style and font: UI Editor → Schedule. Position on the page: UI Editor → Sections.</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════ GALLERY (shared with arandomperson.dev) ═══════════════ */
+// The shared gallery's photos, sections, comments and likes live on
+// arandomperson.dev. Everything here goes through this site's gallery-proxy
+// function, which adds the gallery key on the server; the browser only sends
+// the usual admin key. The gallery's server decides what this site may do:
+// edit and delete its OWN photos, edit the shared section list and text.
+async function galleryCall(body) {
+  const res = await fetch("/.netlify/functions/gallery-proxy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Admin-Key": getAdminKey() },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data: data && typeof data === "object" ? data : {}, proxyAuth: res.headers.get("x-gallery-proxy") === "auth" };
+}
+
+// A failed gallery call → what to tell the owner.
+function galleryError(r) {
+  const d = r.data || {};
+  const code = [d.error, d.reason, d.code].filter((v) => typeof v === "string").join(" ");
+  if (r.proxyAuth) return (d.error || "Unauthorized") + " — this site's admin key was refused.";
+  if (r.status === 500 && d.reason === "not-configured") return "The gallery isn't connected yet. On Netlify, set GALLERY_API and GALLERY_KEY (scoped to Functions), then redeploy.";
+  if (r.status === 401) return "The gallery refused this site's key — it may be wrong or revoked. Ask arandomperson.dev to issue a new one, put it in GALLERY_KEY on Netlify, then redeploy.";
+  if (r.status === 429) return "Too many attempts — wait about 15 minutes and try again.";
+  if (r.status === 403 && /not-yours/.test(code)) return "That photo belongs to the other owner — only your own photos are yours to change.";
+  if (r.status === 409 && /section-in-use/.test(code)) return "That section still holds arandomperson.dev's photos, so it can't be removed. Ask them to move those first.";
+  if (r.status === 409 && /has-photos/.test(code)) return "That still has photos in it — deal with the photos first.";
+  if (r.status === 409 && (d.scope === "images" || d.scope === "sections")) return "Nothing was published: the gallery changed while you were editing. Your edits were kept on top of the latest version — check them, then press Publish again.";
+  if (r.status === 409) return "The gallery changed since it was loaded. Reset loads the latest (it discards unpublished edits).";
+  return d.error || ("The gallery answered HTTP " + r.status + ".");
+}
+
+// Which owner a photo belongs to, however the record carries it.
+const gOwnerRef = (im) => (im && im.owner && typeof im.owner === "object" ? im.owner.ref : "") || (im && im.ownerRef) || "";
+const gOwnerId = (im) => String((im && (im.ownerId || (im.owner && typeof im.owner === "object" && im.owner.id))) || "");
+function gIsMine(im, me) {
+  if (!im || !me) return false;
+  if (typeof im.owner === "string") return im.owner === me.ref || (!!me.ownerId && im.owner === String(me.ownerId));
+  return (!!me.ref && gOwnerRef(im) === me.ref) || (!!me.ownerId && gOwnerId(im) === String(me.ownerId));
+}
+
+// How this gallery marks a photo as shown or not — whichever flag its
+// records use. null when none do (a photo then shows once it has a section).
+function gPublishModel(images) {
+  if (images.some((im) => typeof im.published === "boolean")) return { on: (im) => im.published === true, set: (im, v) => ({ ...im, published: v }) };
+  if (images.some((im) => typeof im.hidden === "boolean")) return { on: (im) => im.hidden !== true, set: (im, v) => ({ ...im, hidden: !v }) };
+  if (images.some((im) => typeof im.draft === "boolean")) return { on: (im) => im.draft !== true, set: (im, v) => ({ ...im, draft: !v }) };
+  if (images.some((im) => im.status === "published" || im.status === "draft")) return { on: (im) => im.status === "published", set: (im, v) => ({ ...im, status: v ? "published" : "draft" }) };
+  return null;
+}
+
+// A new section's id: a slug of its name, unique in the list.
+function gSectionId(name, taken) {
+  let base = String(name || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "section";
+  let id = base;
+  for (let n = 2; taken.has(id); n++) id = base + "-" + n;
+  return id;
+}
+
+const gEditable = (d) => {
+  const g = (d && d.gallery) || {};
+  return {
+    title: typeof g.title === "string" ? g.title : "",
+    intro: typeof g.intro === "string" ? g.intro : "",
+    sections: Array.isArray(g.sections) ? g.sections.filter((s) => s && typeof s.id === "string").map((s) => ({ ...s })) : [],
+    images: Array.isArray(g.images) ? g.images.filter((im) => im && typeof im.id === "string").map((im) => ({ ...im })) : [],
+  };
+};
+
+// The staged state in a comparable form: a field that was missing and one
+// that's now empty count as the same, and a photo's shown/hidden state is
+// compared as a yes/no whatever flag carries it — so undoing an edit by hand
+// clears the "unpublished changes" state.
+const G_FLAGS = ["published", "hidden", "draft", "status"];
+function gNormal(e, pub) {
+  return JSON.stringify({
+    title: e.title || "", intro: e.intro || "",
+    sections: e.sections.map((s) => ({ ...s, name: s.name || "", jp: s.jp || "" })),
+    images: e.images.map((im) => {
+      const x = { ...im, title: im.title || "", description: im.description || "", sectionId: im.sectionId || "", date: im.date || "" };
+      if (pub) { for (const k of G_FLAGS) delete x[k]; x.__shown = pub.on(im); }
+      return x;
+    }),
+  });
+}
+
+// After a 409: the fresh list, with the owner's staged changes re-applied on
+// top — field by field for photos, and the section list only if it was
+// edited. New arrivals are kept; photos that are gone are dropped.
+function gRebase(oldBase, oldEdit, fresh) {
+  const ob = gEditable(oldBase), nb = gEditable(fresh);
+  const byId = (a) => new Map(a.map((x) => [x.id, x]));
+  const diff = (o, e) => { const p = {}; for (const k of new Set([...Object.keys(o), ...Object.keys(e)])) if (JSON.stringify(o[k]) !== JSON.stringify(e[k])) p[k] = e[k]; return p; };
+  const obI = byId(ob.images), oeI = byId(oldEdit.images);
+  const images = nb.images.map((f) => { const o = obI.get(f.id), e = oeI.get(f.id); return o && e ? { ...f, ...diff(o, e) } : f; });
+  let sections = nb.sections;
+  if (JSON.stringify(ob.sections) !== JSON.stringify(oldEdit.sections)) {
+    const obS = byId(ob.sections), nbS = byId(nb.sections);
+    sections = oldEdit.sections
+      .filter((s) => !obS.has(s.id) || nbS.has(s.id))   // removed on the gallery meanwhile
+      .map((s) => { const o = obS.get(s.id), f = nbS.get(s.id); return f ? { ...f, ...diff(o || {}, s) } : s; });
+    for (const f of nb.sections) if (!obS.has(f.id) && !sections.some((s) => s.id === f.id)) sections.push(f);   // added meanwhile
+  }
+  return {
+    title: oldEdit.title !== ob.title ? oldEdit.title : nb.title,
+    intro: oldEdit.intro !== ob.intro ? oldEdit.intro : nb.intro,
+    sections, images,
+  };
+}
+
+function GalleryAdmin() {
+  const [base, setBase] = useState(null);       // the last `list` reply
+  const [edit, setEdit] = useState(null);       // staged {title, intro, sections, images}
+  const [loadErr, setLoadErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [status, showStatus] = useSaveStatus();
+  const [filter, setFilter] = useState("all");
+  const [openCmts, setOpenCmts] = useState({});
+  const [newSec, setNewSec] = useState({ name: "", jp: "" });
+  const [pubErr, setPubErr] = useState("");     // stays up until the next action
+
+  const load = async () => {
+    setLoadErr("");
+    try {
+      const r = await galleryCall({ action: "list" });
+      if (!r.ok) { setLoadErr(galleryError(r)); return false; }
+      setBase(r.data);
+      setEdit(gEditable(r.data));
+      return true;
+    } catch (e) {
+      setLoadErr("Couldn't reach this site's gallery proxy — " + (e.message || "network error"));
+      return false;
+    }
+  };
+  useEffect(() => { load(); }, []);
+
+  const me = (base && base.me) || null;
+  const images = edit ? edit.images : [];
+  const mine = images.filter((im) => gIsMine(im, me));
+  const theirs = images.length - mine.length;
+  const pub = gPublishModel(images);
+  const dirty = !!(base && edit) && gNormal(edit, pub) !== gNormal(gEditable(base), pub);
+  const comments = (base && base.comments) || {};
+  const likes = (base && base.likes) || {};
+  const sectionIds = new Set(edit ? edit.sections.map((s) => s.id) : []);
+
+  const setImg = (id, fn) => setEdit((e) => ({ ...e, images: e.images.map((im) => (im.id === id ? fn(im) : im)) }));
+  const setSec = (i, patch) => setEdit((e) => ({ ...e, sections: e.sections.map((s, k) => (k === i ? { ...s, ...patch } : s)) }));
+  const moveSec = (i, d) => setEdit((e) => {
+    const next = e.sections.slice(); const j = i + d;
+    if (j < 0 || j >= next.length) return e;
+    [next[i], next[j]] = [next[j], next[i]];
+    return { ...e, sections: next };
+  });
+  const removeSec = (i) => {
+    const s = edit.sections[i];
+    const ownIn = mine.filter((im) => im.sectionId === s.id).length;
+    const otherIn = images.filter((im) => im.sectionId === s.id).length - ownIn;
+    if (otherIn) { showStatus(`"${s.name}" holds ${otherIn} of arandomperson.dev's photos — it can't be removed.`, "err"); return; }
+    if (ownIn && !confirm(`"${s.name}" holds ${ownIn} of your photos. They'll stop showing until you move them to another section. Remove it?`)) return;
+    setEdit((e) => ({ ...e, sections: e.sections.filter((_, k) => k !== i) }));
+  };
+  const addSec = () => {
+    const name = newSec.name.trim();
+    if (!name) { showStatus("give the section a name", "err"); return; }
+    setEdit((e) => {
+      // Ids still referenced by any photo (a removed section's) are taken too,
+      // so a new section can't quietly adopt someone's orphaned photos.
+      const taken = new Set([...e.sections.map((s) => s.id), ...e.images.map((im) => im.sectionId).filter((v) => typeof v === "string" && v)]);
+      return { ...e, sections: [...e.sections, { id: gSectionId(name, taken), name, jp: newSec.jp.trim() }] };
+    });
+    setNewSec({ name: "", jp: "" });
+  };
+
+  const publish = async () => {
+    if (!base || !edit) { showStatus("still connecting to the gallery", "err"); return; }
+    for (const s of edit.sections) if (!String(s.name || "").trim()) { showStatus("every section needs a name", "err"); return; }
+    setPubErr("");
+    setBusy(true);
+    try {
+      // Every photo goes back as listed: the gallery writes only this site's
+      // own and drops the rest, and a full replace of "mine" must never miss
+      // one of them because of how its owner happens to be recorded.
+      const r = await galleryCall({
+        action: "save",
+        title: edit.title, intro: edit.intro,
+        sections: edit.sections.map((s) => ({ ...s, name: String(s.name).trim(), jp: String(s.jp || "").trim() })),
+        images: edit.images,
+        baseRev: base.myRev, baseSectionsRev: base.sectionsRev,
+      });
+      if (!r.ok) {
+        if (r.status === 409 && (r.data.scope === "images" || r.data.scope === "sections")) {
+          const fr = await galleryCall({ action: "list" });
+          if (fr.ok) { setEdit(gRebase(base, edit, fr.data)); setBase(fr.data); }
+        }
+        setPubErr(galleryError(r));
+        setBusy(false);
+        return;
+      }
+      const ignored = Number(r.data.ignoredForeign) || 0;
+      if (!(await load())) showStatus("published, but couldn't refresh — press Reset", "err");
+      else showStatus(ignored > theirs ? `published ✓ — ${ignored - theirs} change(s) to the other owner's photos were ignored` : "published ✓");
+    } catch (e) { showStatus(e.message || "publish failed", "err"); }
+    setBusy(false);
+  };
+  const reset = async () => { setPubErr(""); setBusy(true); if (await load()) showStatus("reloaded from the gallery"); setBusy(false); };
+
+  // Removals act at once on the gallery, so staged edits must not be pending.
+  const act = async (body, confirmText, done) => {
+    if (dirty) { showStatus("publish or reset your changes first", "err"); return; }
+    if (!confirm(confirmText)) return;
+    setPubErr("");
+    setBusy(true);
+    try {
+      const r = await galleryCall(body);
+      if (!r.ok) showStatus(galleryError(r), "err");
+      else if (!(await load())) showStatus("done, but couldn't refresh — press Reset", "err");
+      else showStatus(done);
+    } catch (e) { showStatus(e.message || "failed", "err"); }
+    setBusy(false);
+  };
+
+  const shown = mine.filter((im) => filter === "all" || (filter === "none" ? !sectionIds.has(im.sectionId) : im.sectionId === filter));
+  const ownersLine = base && Array.isArray(base.owners) ? base.owners.map((o) => o && o.name).filter(Boolean).join(" · ") : "";
+
+  return (
+    <div className="sec-page">
+      <EditorHead title="Gallery" meta="Your photos in the gallery shared with arandomperson.dev." status={status} onReset={reset} onPublish={publish} busy={busy} />
+      {pubErr ? <div className="glass" style={{ marginBottom: 14, fontSize: 12.5, color: "#ff9aa8", lineHeight: 1.6 }}>{pubErr}</div> : null}
+
+      <div className="glass" style={{ marginBottom: 14 }}>
+        <div className="grp-head" style={{ justifyContent: "space-between" }}>
+          <span className="grp-title">Connection</span>
+          <a className="btn btn-tiny" href="/gallery" target="_blank" rel="noopener">View the gallery ↗</a>
+        </div>
+        {loadErr ? (
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, color: "#ff9aa8", lineHeight: 1.6, flex: "1 1 260px" }}>{loadErr}</div>
+              <button className="btn btn-tiny" disabled={busy} onClick={reset}>Retry</button>
+            </div>
+          )
+          : !base ? <div className="field-sub">connecting to the gallery…</div>
+          : (
+            <div className="ctl-stack" style={{ gap: 6 }}>
+              <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
+                Signed in as <b style={{ color: "var(--ink)" }}>{(me && me.name) || "this site"}</b>
+                {me && me.scope ? <span className="field-sub"> · scope: {me.scope}</span> : null}
+              </div>
+              <div className="field-sub">{mine.length} of your photos · {theirs} by the other owner{ownersLine ? " · owners: " + ownersLine : ""}</div>
+              <div className="field-sub">Upload with /gallery in Discord, then title, sort and publish your photos here. The gallery's look is set from arandomperson.dev's panel.</div>
+            </div>
+          )}
+      </div>
+
+      <fieldset disabled={busy} className="g-fieldset">
+      {edit && (
+        <div className="sec-grid" style={{ marginBottom: 14 }}>
+          <div className="glass">
+            <div className="grp-title" style={{ marginBottom: 6 }}>Gallery text</div>
+            <div className="field-sub" style={{ marginBottom: 12 }}>shared — this shows on both sites</div>
+            <div className="lbl">Title</div>
+            <input className="input" value={edit.title} maxLength={80} onChange={(e) => setEdit({ ...edit, title: e.target.value })} aria-label="Gallery title" />
+            <div className="lbl" style={{ marginTop: 12 }}>Intro</div>
+            <textarea className="textarea" style={{ minHeight: 70 }} value={edit.intro} maxLength={600} onChange={(e) => setEdit({ ...edit, intro: e.target.value })} aria-label="Gallery intro" />
+          </div>
+
+          <div className="glass">
+            <div className="grp-title" style={{ marginBottom: 6 }}>Sections</div>
+            <div className="field-sub" style={{ marginBottom: 12 }}>shared — both owners' photos are sorted into these</div>
+            <div className="ctl-stack" style={{ gap: 8 }}>
+              {edit.sections.map((s, i) => {
+                const ownIn = mine.filter((im) => im.sectionId === s.id).length;
+                const allIn = images.filter((im) => im.sectionId === s.id).length;
+                return (
+                  <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1fr 90px auto", gap: 6, alignItems: "center" }}>
+                    <input className="input" value={s.name || ""} maxLength={60} onChange={(e) => setSec(i, { name: e.target.value })} aria-label={"Section " + (i + 1) + " name"} />
+                    <input className="input" value={s.jp || ""} maxLength={30} placeholder="subtitle" onChange={(e) => setSec(i, { jp: e.target.value })} aria-label={"Section " + (i + 1) + " subtitle"} />
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button className="btn btn-tiny" onClick={() => moveSec(i, -1)} disabled={i === 0} aria-label={"Move section " + (i + 1) + " up"}>↑</button>
+                      <button className="btn btn-tiny" onClick={() => moveSec(i, 1)} disabled={i === edit.sections.length - 1} aria-label={"Move section " + (i + 1) + " down"}>↓</button>
+                      <button className="btn btn-tiny btn-danger" onClick={() => removeSec(i)} aria-label={"Remove section " + (i + 1)}>✕</button>
+                    </div>
+                    <div className="field-sub" style={{ gridColumn: "1 / -1", marginTop: -2 }}>{ownIn} yours · {allIn - ownIn} theirs</div>
+                  </div>
+                );
+              })}
+              {!edit.sections.length ? <div className="field-sub">No sections yet.</div> : null}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 90px auto", gap: 6, marginTop: 6 }}>
+                <input className="input" value={newSec.name} maxLength={60} placeholder="new section, e.g. a game" onChange={(e) => setNewSec({ ...newSec, name: e.target.value })} aria-label="New section name" />
+                <input className="input" value={newSec.jp} maxLength={30} placeholder="subtitle" onChange={(e) => setNewSec({ ...newSec, jp: e.target.value })} aria-label="New section subtitle" />
+                <button className="btn btn-tiny" onClick={addSec}>+ Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {edit && (
+        <div className="glass">
+          <div className="grp-head" style={{ justifyContent: "space-between" }}>
+            <span className="grp-title">Your photos · {mine.length}</span>
+            <select className="input" style={{ width: "auto", minWidth: 160 }} value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Show photos from">
+              <option value="all">All sections</option>
+              {edit.sections.map((s) => <option key={s.id} value={s.id}>{s.name || s.id}</option>)}
+              <option value="none">No section</option>
+            </select>
+          </div>
+          {!mine.length ? <div className="field-sub">No photos of yours yet — upload one with /gallery in Discord.</div> : null}
+          <div className="ctl-stack" style={{ gap: 14 }}>
+            {shown.map((im) => {
+              const cl = Array.isArray(comments[im.id]) ? comments[im.id] : [];
+              const noSection = !sectionIds.has(im.sectionId);
+              return (
+                <div key={im.id} className="g-photo">
+                  <a href={/^https?:\/\//i.test(im.url || "") ? im.url : undefined} target="_blank" rel="noopener noreferrer" className="g-photo-thumb">{/^https?:\/\//i.test(im.url || "") ? <img src={im.url} alt="" loading="lazy" /> : null}</a>
+                  <div className="ctl-stack" style={{ gap: 8, minWidth: 0 }}>
+                    <input className="input" value={im.title || ""} maxLength={120} placeholder="title" onChange={(e) => setImg(im.id, (x) => ({ ...x, title: e.target.value }))} aria-label="Photo title" />
+                    <textarea className="textarea" style={{ minHeight: 54 }} value={im.description || ""} maxLength={1000} placeholder="description (optional)" onChange={(e) => setImg(im.id, (x) => ({ ...x, description: e.target.value }))} aria-label="Photo description" />
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <select className="input" style={{ width: "auto", minWidth: 150, flex: "1 1 150px" }} value={noSection ? "" : im.sectionId} onChange={(e) => setImg(im.id, (x) => ({ ...x, sectionId: e.target.value }))} aria-label="Photo section">
+                        <option value="">— no section —</option>
+                        {edit.sections.map((s) => <option key={s.id} value={s.id}>{s.name || s.id}</option>)}
+                      </select>
+                      <input className="input" style={{ width: 130, flex: "0 0 auto" }} value={im.date || ""} maxLength={40} placeholder="YYYY-MM-DD" onChange={(e) => setImg(im.id, (x) => ({ ...x, date: e.target.value }))} aria-label="Photo date" />
+                      {pub ? (
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--ink-2)" }}>
+                          <div className={"switch " + (pub.on(im) ? "on" : "")} onClick={() => { if (!busy) setImg(im.id, (x) => pub.set(x, !pub.on(x))); }} role="switch" aria-checked={pub.on(im)} aria-label="Published"><div className="knob" /></div>
+                          {pub.on(im) ? "published" : "hidden"}
+                        </label>
+                      ) : null}
+                    </div>
+                    {noSection ? <div className="field-sub" style={{ color: "#f3c969" }}>not in a section — it won't show on the gallery until it is</div> : null}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <span className="field-sub">♥ {Number(likes[im.id] ?? im.likes) || 0}</span>
+                      <button className="btn btn-tiny" onClick={() => setOpenCmts({ ...openCmts, [im.id]: !openCmts[im.id] })}>Comments · {cl.length}</button>
+                      <span style={{ flex: 1 }} />
+                      <button className="btn btn-tiny" disabled={busy} onClick={() => act({ action: "delete-image", id: im.id }, `Remove "${im.title || "this photo"}" from the gallery?`, "removed ✓")}>Remove</button>
+                      <button className="btn btn-tiny btn-danger" disabled={busy} onClick={() => act({ action: "purge-image", id: im.id }, `Delete "${im.title || "this photo"}" permanently, file included? This can't be undone.`, "deleted ✓")}>Delete permanently</button>
+                    </div>
+                    {openCmts[im.id] ? (
+                      <div className="ctl-stack" style={{ gap: 6, paddingLeft: 10, borderLeft: "2px solid var(--line-3)" }}>
+                        {!cl.length ? <div className="field-sub">No comments.</div> : null}
+                        {cl.map((c) => (
+                          <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                            <div style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.5 }}>
+                              <b>{c.username || "anonymous"}</b> <span className="field-sub">{c.t ? new Date(c.t).toLocaleString() : ""}</span>
+                              <div style={{ color: "var(--ink-2)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{c.comment || ""}</div>
+                            </div>
+                            <button className="btn btn-tiny btn-danger" disabled={busy} onClick={() => act({ action: "delete-comment", imageId: im.id, id: c.id }, `Delete this comment by ${c.username || "anonymous"}?`, "comment deleted ✓")} aria-label="Delete comment">✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      </fieldset>
     </div>
   );
 }
@@ -3960,7 +4334,9 @@ function SiteVideoBackground({ url, heroUrl, isHero }) {
 /* ═══════════════ APP ═══════════════ */
 function App() {
   const [authed, setAuthed] = useState(!!getAdminKey());
-  const [active, setActive] = useState("home");
+  // admin.html#gallery (the link the gallery's Discord bot can hand out)
+  // opens straight on the Gallery page.
+  const [active, setActive] = useState(() => (/(^|[#?&])gallery\b/i.test(location.hash + "&" + location.search.slice(1)) ? "gallery" : "home"));
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Sidebar starts closed so the cinematic hero takes the full screen on entry.
   // User can open it via the menu button.
@@ -4034,6 +4410,7 @@ function App() {
     else if (active === "analytics") content = <Overview data={data} />;
     else if (active === "content") content = <ContentEditor data={data} reload={reload} />;
     else if (active === "schedule") content = <SchedulePage data={data} reload={reload} />;
+    else if (active === "gallery") content = <GalleryAdmin />;
     else if (active === "ui") content = <UIEditor data={data} reload={reload} />;
     else if (active === "presets") content = <Presets data={data} reload={reload} />;
     else if (active === "badges") content = <DiscordBadges data={data} reload={reload} />;
