@@ -9,3 +9,14 @@
 [functions]
   node_bundler          = "esbuild"
   external_node_modules = ["@netlify/blobs"]
+
+# The shared gallery page answers at /gallery as well as /gallery.html.
+[[redirects]]
+  from   = "/gallery"
+  to     = "/gallery.html"
+  status = 200
+
+[[redirects]]
+  from   = "/gallery/"
+  to     = "/gallery.html"
+  status = 200

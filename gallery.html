@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gallery</title>
+  <link rel="icon" type="image/png" href="/favicon.png"/>
+  <link rel="apple-touch-icon" href="/favicon.png"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <!-- The shared gallery lives on arandomperson.dev: its API and its photos. -->
+  <link rel="preconnect" href="https://arandomperson.dev" crossorigin/>
+  <link rel="preconnect" href="https://pub-3713ba218b584c05bc9be30b5f262c25.r2.dev"/>
+  <!-- Runs before the stylesheet so the colours this device saw last time are
+       already in place before anything is drawn. -->
+  <script>
+    try {
+      // This site's favicon (Admin → Settings), as cached by the main page.
+      var __fav = localStorage.getItem('faviconCache');
+      if (__fav) document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(function (l) { l.removeAttribute('type'); l.href = __fav; });
+
+      // Replay the last-seen theme as inline styles on <html>. Inline styles
+      // outrank the stylesheet whatever the document order, so no ordering
+      // tricks are needed — and without this the page paints stock colours and
+      // then snaps to the real ones, which reads as a flash.
+      var __gt = JSON.parse(localStorage.getItem('galleryThemeCache') || 'null');
+      if (__gt && typeof __gt === 'object') {
+        for (var __k in __gt) {
+          if (__k.charAt(0) === '-' && typeof __gt[__k] === 'string') {
+            document.documentElement.style.setProperty(__k, __gt[__k]);
+          }
+        }
+        document.documentElement.classList.add('theme-ready');
+      }
+    } catch (e) {}
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Serif+JP:wght@400;600;900&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+    /* Every colour is a variable written at runtime from the Gallery Editor.
+       The values here are only what a cold, offline first paint falls back to. */
+    :root{
+      --g-bg1:#1a0f12; --g-bg2:#0b090a;
+      --g-accent1:#d7263d; --g-accent2:#e3b04b;
+      --g-text:#f3ece4; --g-muted:#a89a90; --g-panel:30,20,23;
+      --g-glass:.55;
+      --g-tile-min:290px;
+      --g-title-font:'Noto Serif JP',serif;
+      --g-title-c1:#d7263d; --g-title-c2:#e3b04b; --g-title-angle:135deg;
+      --acc-title-1:#d7263d; --acc-title-2:#e3b04b;
+      --acc-date-1:#d7263d;  --acc-date-2:#e3b04b;
+      --acc-cmt-1:#d7263d;   --acc-cmt-2:#e3b04b;
+      --nav-bg:13,4,8; --nav-accent:220,100,120; --nav-accent2:212,168,75; --nav-alpha:.9;
+    }
+
+    html{scroll-behavior:smooth;}
+    body{
+      min-height:100vh;color:var(--g-text);
+      font-family:'DM Sans',system-ui,sans-serif;
+      background:var(--g-bg2);
+      overflow-x:clip;
+      -webkit-font-smoothing:antialiased;
+    }
+    body.overlay-lock{overflow:hidden;}
+    @media (max-width:640px){ body.nav-open{overflow:hidden;} }
+    img{max-width:100%;}
+    button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;}
+    ::selection{background:var(--g-accent1);color:#fff;}
+    input::placeholder,textarea::placeholder{color:rgba(243,236,228,.35);}
+
+    @keyframes gFade{from{opacity:0}to{opacity:1}}
+    @keyframes gPop{0%{opacity:0;transform:translateY(-14px) scale(.92)}60%{opacity:1;transform:translateY(2px) scale(1.015)}100%{opacity:1;transform:none}}
+    @keyframes gRise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+    @keyframes lbIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+    @keyframes gPulse{0%,100%{opacity:.45}50%{opacity:1}}
+
+    /* ── BACKGROUND ── */
+    .g-bg{
+      position:fixed;inset:0;z-index:-3;
+      background:
+        radial-gradient(1100px 620px at 8% -8%, color-mix(in oklch, var(--g-accent1) 24%, transparent), transparent 62%),
+        radial-gradient(900px 520px at 105% 18%, color-mix(in oklch, var(--g-accent2) 12%, transparent), transparent 60%),
+        radial-gradient(1200px 700px at 50% 120%, color-mix(in oklch, var(--g-accent1) 10%, transparent), transparent 60%),
+        linear-gradient(180deg, var(--g-bg1), var(--g-bg2) 55%);
+      opacity:0;transition:opacity .5s ease;
+    }
+    html.theme-ready .g-bg{opacity:1;}
+    .g-video{position:fixed;inset:0;z-index:-2;width:100%;height:100%;object-fit:cover;pointer-events:none;opacity:0;transition:opacity 1s ease;display:none;}
+    .g-video.on{display:block;opacity:1;}
+    /* The wash over the video. Only drawn while a video is actually playing —
+       tinting a gradient that is already the owner's chosen colour is noise. */
+    .g-tint{position:fixed;inset:0;z-index:-1;pointer-events:none;display:none;}
+    .g-tint.on{display:block;}
+    /* Particles sit above the background and below everything readable. */
+    /* width/height are NOT redundant with inset:0 here. A <canvas> is a
+       replaced element with an intrinsic 300x150, and for replaced elements
+       inset:0 with auto width resolves to the intrinsic size rather than to
+       the containing block — which is why the particles were piling up in the
+       top-left corner. A <div> would have stretched; this will not. */
+    .g-fx{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:none;}
+
+    /* ── TOP BAR ── */
+    .g-top{
+      /* Tall enough to contain the 42px burger with room either side, so the
+         button sits INSIDE the bar instead of hanging below its edge. */
+      position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;
+      min-height:68px;
+      padding:14px clamp(16px,4vw,48px) 14px 80px;
+      background:linear-gradient(180deg, rgba(11,9,10,.85), rgba(11,9,10,.55));
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      border-bottom:1px solid rgba(255,255,255,.05);
+      font-family:'Share Tech Mono',monospace;font-size:13px;letter-spacing:.08em;color:var(--g-muted);white-space:nowrap;
+    }
+    .g-top b{color:var(--g-accent1);font-weight:400;}
+    .g-top i{color:rgba(255,255,255,.2);font-style:normal;}
+    .g-top em{color:var(--g-text);font-style:normal;}
+
+    /* ── HERO ── */
+    .g-hero{position:relative;z-index:1;padding:clamp(48px,8vw,104px) clamp(16px,4vw,48px) clamp(36px,6vw,64px);max-width:1440px;margin:0 auto;}
+    .g-eyebrow{font-family:'Noto Serif JP',serif;font-weight:600;font-size:clamp(17px,2vw,22px);letter-spacing:.3em;color:var(--g-accent1);margin-bottom:14px;}
+    .g-title{
+      margin:0;font-family:var(--g-title-font);font-weight:900;
+      font-size:clamp(46px,8.5vw,116px);line-height:.95;letter-spacing:-.02em;text-wrap:balance;
+      background:linear-gradient(var(--g-title-angle), var(--g-title-c1), var(--g-title-c2));
+      -webkit-background-clip:text;background-clip:text;
+      -webkit-text-fill-color:transparent;color:transparent;
+    }
+    /* With a video behind it, the title needs its own ground to stand on. */
+    .g-titlewrap{position:relative;display:inline-block;}
+    .g-titlewrap::before{
+      content:'';position:absolute;inset:-14% -8%;z-index:-1;opacity:0;
+      border-radius:28px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+      background:radial-gradient(60% 70% at 40% 50%, rgba(0,0,0,.42), transparent 75%);
+      transition:opacity .5s ease;
+    }
+    html[data-gvideo] .g-titlewrap::before{opacity:1;}
+    .g-rule{height:2px;margin:26px 0;max-width:520px;border-radius:2px;
+      background:linear-gradient(90deg, var(--acc-title-1), var(--acc-title-2) 60%, transparent);}
+    .g-herofoot{display:flex;flex-wrap:wrap;gap:22px 48px;align-items:flex-end;justify-content:space-between;}
+    .g-desc{margin:0;max-width:520px;font-size:17px;line-height:1.65;color:var(--g-muted);text-wrap:pretty;}
+    .g-stat{display:flex;flex-direction:column;gap:4px;}
+    .g-stat b{font-family:'Noto Serif JP',serif;font-size:40px;font-weight:600;line-height:1;color:var(--g-text);}
+    .g-stat span{font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.18em;color:var(--g-muted);text-transform:uppercase;}
+
+    /* ── SECTIONS ── */
+    .g-main{position:relative;z-index:1;max-width:1440px;margin:0 auto;padding:0 clamp(16px,4vw,48px) 110px;display:flex;flex-direction:column;gap:clamp(56px,8vw,96px);}
+    .g-sec-head{display:flex;align-items:flex-end;gap:20px;margin-bottom:26px;flex-wrap:wrap;}
+    .g-sec-num{font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--g-accent2);padding-bottom:8px;}
+    .g-sec-names{display:flex;flex-direction:column;gap:6px;min-width:0;}
+    .g-sec-jp{font-family:'Noto Serif JP',serif;font-size:13px;color:var(--g-accent1);letter-spacing:.12em;}
+    .g-sec-jp:empty{display:none;}
+    .g-sec-name{margin:0;font-family:'Noto Serif JP',serif;font-weight:600;font-size:clamp(26px,3.4vw,40px);line-height:1.1;text-wrap:balance;}
+    .g-sec-line{flex:1 1 80px;height:1px;margin-bottom:14px;background:linear-gradient(90deg, rgba(255,255,255,.14), transparent);}
+    .g-sec-count{font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:.16em;color:var(--g-muted);padding-bottom:8px;text-transform:uppercase;}
+
+    .g-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(min(100%, var(--g-tile-min)), 1fr));gap:clamp(14px,1.6vw,22px);}
+    .g-tile{
+      position:relative;display:flex;flex-direction:column;width:100%;text-align:left;
+      border-radius:16px;overflow:hidden;cursor:pointer;
+      background:rgba(var(--g-panel), var(--g-glass));
+      backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+      border:1px solid rgba(255,255,255,.07);
+      box-shadow:0 1px 0 rgba(255,255,255,.04) inset;
+      transition:transform .45s cubic-bezier(.2,.7,.2,1), border-color .3s, box-shadow .45s;
+    }
+    /* The glass can be switched off entirely, which makes the strip beneath a
+       photo a solid panel rather than a pane you can see the page through. */
+    html[data-gglass="off"] .g-tile{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgb(var(--g-panel));}
+    .g-tile:hover,.g-tile:focus-visible{
+      transform:translateY(-6px);outline:none;
+      border-color:color-mix(in oklch, var(--g-accent1) 55%, transparent);
+      box-shadow:0 28px 50px -24px color-mix(in oklch, var(--g-accent1) 60%, transparent), 0 1px 0 rgba(255,255,255,.06) inset;
+    }
+    .g-shot{position:relative;aspect-ratio:4/3;overflow:hidden;background:rgba(255,255,255,.035);}
+    .g-shot img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s cubic-bezier(.2,.8,.2,1);
+      -webkit-user-drag:none;user-select:none;-webkit-touch-callout:none;}
+    .g-tile:hover .g-shot img{transform:scale(1.045);}
+    .g-shot::after{content:'';position:absolute;inset:auto 0 0 0;height:40%;background:linear-gradient(0deg, rgba(0,0,0,.5), transparent);pointer-events:none;}
+    .g-shot.broken::before{
+      content:'image unavailable';position:absolute;inset:0;z-index:1;
+      display:flex;align-items:center;justify-content:center;
+      font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.3);
+    }
+    .g-cap{display:flex;flex-direction:column;gap:8px;padding:14px 16px 16px;}
+    .g-cap-title{font-size:15px;font-weight:600;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .g-cap-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--g-muted);}
+    /* WHO TOOK IT. Deliberately its own element and NOT inside .g-cap-meta:
+       a test reads the tile's date as that row's first span, so a credit put in
+       front of the date there would leave the assertion passing while quietly
+       checking the wrong thing. Outside the row, neither can be mistaken for
+       the other. */
+    .g-cap-by{display:flex;align-items:center;gap:7px;min-width:0;}
+    .g-cap-by img{width:18px;height:18px;border-radius:50%;flex:0 0 18px;object-fit:cover;}
+    .g-cap-by span{font-size:11.5px;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+      background-image:linear-gradient(90deg,var(--acc-cmt-1),var(--acc-cmt-2));
+      -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;}
+    /* The expanded view has room for a face and a full name. */
+    .lb-by{display:flex;align-items:center;gap:9px;margin-top:2px;}
+    .lb-by img{width:24px;height:24px;border-radius:50%;flex:0 0 24px;object-fit:cover;}
+    .lb-by-name{font-size:13px;font-weight:600;
+      background-image:linear-gradient(90deg,var(--acc-cmt-1),var(--acc-cmt-2));
+      -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;}
+    .lb-by-label{font-family:'Share Tech Mono',monospace;font-size:10.5px;letter-spacing:.14em;
+      text-transform:uppercase;color:var(--g-muted);}
+    .g-counts{display:flex;align-items:center;gap:12px;}
+    .g-count{display:flex;align-items:center;gap:5px;}
+
+    .g-state{text-align:center;padding:clamp(64px,10vw,110px) 24px;display:flex;flex-direction:column;align-items:center;gap:14px;}
+    .g-state .bar{width:48px;height:2px;border-radius:2px;background:var(--g-accent1);}
+    .g-state .msg{font-family:'Noto Serif JP',serif;font-size:clamp(24px,3vw,32px);font-weight:600;text-wrap:balance;}
+
+    .g-foot{position:relative;z-index:1;border-top:1px solid rgba(255,255,255,.05);padding:26px clamp(16px,4vw,48px);
+      font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:.08em;color:var(--g-muted);}
+
+    /* ── REVEAL ──
+       Nothing is shown until every photo has been fetched, then they cascade
+       in from the top. --d is the per-tile delay, set in JS from position. */
+    #galSections.staging{opacity:0;pointer-events:none;}
+    #galSections.revealed .g-section{animation:gRise .6s cubic-bezier(.22,1,.36,1) both;animation-delay:var(--d,0ms);}
+    #galSections.revealed .g-tile{animation:gPop .7s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--d,0ms);}
+
+    /* ── LOADER ── */
+    .g-loader{
+      position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+      background:var(--g-bg2);
+      transition:opacity .85s cubic-bezier(.4,0,.2,1), visibility 0s linear .85s;
+    }
+    .g-loader.done{opacity:0;visibility:hidden;}
+    /* The inner block drifts up slightly as it goes, so the hand-off reads as
+       a curtain lifting rather than a layer being switched off. */
+    .g-loader.done .g-loader-in{transform:translateY(-12px);opacity:0;transition:transform .85s cubic-bezier(.4,0,.2,1), opacity .5s ease;}
+    .g-loader-in{transition:transform .85s cubic-bezier(.4,0,.2,1), opacity .5s ease;}
+    .g-loader-in{display:flex;flex-direction:column;align-items:center;gap:14px;width:min(280px,80vw);}
+    .g-loader-jp{font-family:'Noto Serif JP',serif;font-weight:600;font-size:20px;letter-spacing:.3em;color:var(--g-accent1);}
+    .g-loader-t{font-family:var(--g-title-font);font-weight:900;font-size:36px;line-height:1;color:var(--g-text);text-align:center;}
+    .g-loader-track{width:100%;height:2px;margin-top:16px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;}
+    .g-loader-fill{height:100%;width:0%;background:var(--g-accent1);transition:width .25s cubic-bezier(.4,0,.2,1);}
+    .g-loader-nums{width:100%;display:flex;justify-content:space-between;font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:.14em;color:var(--g-muted);text-transform:uppercase;}
+
+    /* ══════════ NAV DRAWER ══════════ */
+    .nav-burger{
+      /* 13px centres it in the 68px bar. */
+      position:fixed;top:13px;left:1.25rem;z-index:300;
+      width:42px;height:42px;border-radius:8px;
+      background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);
+      backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+      cursor:pointer;transition:border-color .25s,box-shadow .25s,background .25s;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .nav-burger span{display:block;width:18px;height:1.5px;border-radius:2px;background:rgba(255,255,255,.88);
+      box-shadow:0 0 6px rgba(255,255,255,.25);
+      transition:transform .3s cubic-bezier(.22,.9,.32,1),opacity .2s,width .25s;}
+    .nav-burger:hover{border-color:rgba(255,255,255,.45);box-shadow:0 0 18px rgba(255,255,255,.18);background:rgba(255,255,255,.12);}
+    .nav-burger:hover span{width:22px;}
+    body.nav-open .nav-burger span:nth-child(1){transform:translateY(6.5px) rotate(45deg);width:20px;}
+    body.nav-open .nav-burger span:nth-child(2){opacity:0;transform:scaleX(.2);}
+    body.nav-open .nav-burger span:nth-child(3){transform:translateY(-6.5px) rotate(-45deg);width:20px;}
+
+    /* The drawer and its scrim are composited, not laid out: transform and
+       opacity only, no blur animating, nothing that forces a repaint of the
+       page behind it. That is what the old version got wrong. */
+    .nav-scrim{
+      position:fixed;inset:0;z-index:275;background:rgba(8,2,5,.55);
+      opacity:0;visibility:hidden;
+      transition:opacity .34s cubic-bezier(.4,0,.2,1), visibility 0s linear .34s;
+      will-change:opacity;
+    }
+    .nav-scrim.open{opacity:1;visibility:visible;transition:opacity .34s cubic-bezier(.4,0,.2,1), visibility 0s;}
+    .nav-side{
+      position:fixed;top:0;left:0;bottom:0;z-index:280;
+      width:min(274px,80vw);display:flex;flex-direction:column;padding:4.5rem 0 1rem;
+      background:rgba(var(--nav-bg,13,4,8),var(--nav-alpha,.9));
+      border-right:1px solid rgba(var(--nav-accent,220,100,120),.18);
+      box-shadow:22px 0 60px rgba(0,0,0,.45);
+      backdrop-filter:blur(16px) saturate(1.25);-webkit-backdrop-filter:blur(16px) saturate(1.25);
+      transform:translate3d(-100%,0,0);visibility:hidden;
+      transition:transform .34s cubic-bezier(.4,0,.2,1), visibility 0s linear .34s;
+      will-change:transform;
+      overflow-y:auto;overscroll-behavior:contain;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .nav-side.open{transform:translate3d(0,0,0);visibility:visible;transition:transform .34s cubic-bezier(.4,0,.2,1), visibility 0s;}
+    .nav-side-brand{display:flex;align-items:center;gap:.6rem;padding:0 1rem 1rem;border-bottom:1px solid rgba(var(--nav-accent,220,100,120),.14);}
+    .nav-side-mark{width:34px;height:34px;flex:0 0 34px;border-radius:9px;overflow:hidden;
+      border:1px solid rgba(var(--nav-accent,220,100,120),.28);
+      background:linear-gradient(135deg,rgba(var(--nav-accent,192,57,43),.5),rgba(var(--nav-accent2,212,168,75),.35));
+      display:flex;align-items:center;justify-content:center;}
+    .nav-side-mark img{width:100%;height:100%;object-fit:cover;display:block;}
+    .nav-side-brandtext{display:flex;flex-direction:column;gap:.1rem;min-width:0;}
+    .nav-side-title{font-family:'Noto Serif JP',serif;font-size:.82rem;font-weight:600;color:rgba(255,235,235,.92);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .nav-side-sub{font-family:'Share Tech Mono',monospace;font-size:.48rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,200,210,.34);}
+    .nav-options{display:flex;flex-direction:column;gap:.28rem;padding:.9rem .6rem;}
+    .nav-option{
+      position:relative;display:flex;align-items:center;gap:.55rem;width:100%;
+      border:1px solid transparent;border-radius:8px;padding:.56rem .62rem;text-align:left;
+      color:rgba(255,235,235,.62);
+      transition:background .18s,transform .18s,color .18s,border-color .18s;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .nav-option:hover,.nav-option:focus-visible{color:#fff;background:rgba(255,255,255,.055);border-color:rgba(var(--nav-accent,220,100,120),.22);transform:translateX(3px);}
+    .nav-option:focus-visible{outline:none;box-shadow:0 0 0 1px rgba(var(--nav-accent2,212,168,75),.35);}
+    .nav-option.is-here{color:#fff;background:rgba(var(--nav-accent,192,57,43),.13);border-color:rgba(var(--nav-accent2,212,168,75),.26);transform:none;}
+    .nav-option.is-here .nav-option-num{color:rgba(var(--nav-accent2,240,201,106),.95);}
+    .nav-option-num{font-family:'Share Tech Mono',monospace;font-size:.55rem;letter-spacing:.16em;color:rgba(var(--nav-accent2,212,168,75),.5);width:17px;flex:0 0 17px;}
+    .nav-option-label{font-family:'Noto Serif JP',serif;font-weight:600;font-size:.9rem;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .nav-option-sub{margin-left:auto;padding-left:.5rem;font-family:'Share Tech Mono',monospace;font-size:.47rem;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,200,210,.3);white-space:nowrap;}
+    .nav-options-divider{height:1px;margin:.38rem .3rem;background:linear-gradient(90deg,transparent,rgba(var(--nav-accent2,212,168,75),.3),transparent);}
+
+    /* ══════════ EXPANDED VIEW ══════════ */
+    .lb-scrim{position:fixed;inset:0;z-index:400;display:none;background:rgba(6,4,5,.86);
+      backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);overflow-y:auto;}
+    .lb-scrim.open{display:block;animation:gFade .3s ease both;}
+    .lb{display:flex;flex-wrap:wrap;min-height:100%;animation:lbIn .45s cubic-bezier(.2,.8,.2,1) both;}
+    .lb-stage{position:relative;flex:999 1 560px;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+      padding:clamp(48px,7vw,80px) clamp(16px,5vw,88px) 32px;}
+    .lb-frame{position:relative;width:min(100%, calc((100vh - 190px) * 4 / 3));aspect-ratio:4/3;border-radius:14px;overflow:hidden;
+      background:rgba(255,255,255,.03);box-shadow:0 40px 90px -30px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.06);}
+    .lb-frame img{width:100%;height:100%;object-fit:contain;display:block;background:#000;
+      -webkit-user-drag:none;user-select:none;-webkit-touch-callout:none;}
+    .lb-nav{display:flex;align-items:center;gap:16px;}
+    .lb-arrow{width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,.12);
+      background:rgba(var(--g-panel),var(--g-glass));color:var(--g-text);
+      display:flex;align-items:center;justify-content:center;transition:border-color .25s,background .25s,opacity .25s;}
+    .lb-arrow:hover:not([disabled]){border-color:var(--g-accent1);background:color-mix(in oklch, var(--g-accent1) 25%, transparent);}
+    .lb-arrow[disabled]{opacity:.3;cursor:default;}
+    .lb-pos{font-family:'Share Tech Mono',monospace;font-size:13px;letter-spacing:.12em;color:var(--g-muted);min-width:72px;text-align:center;}
+    .lb-pos b{color:var(--g-text);font-weight:400;}
+    .lb-hint{font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.14em;color:rgba(243,236,228,.4);}
+
+    .lb-side{flex:1 1 380px;min-width:0;display:flex;flex-direction:column;gap:22px;
+      padding:clamp(24px,3vw,40px);background:rgba(var(--g-panel),var(--g-glass));
+      border-left:1px solid rgba(255,255,255,.07);max-height:100vh;overflow-y:auto;}
+    .lb-side-top{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+    .lb-game{font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:.16em;color:var(--g-accent2);text-transform:uppercase;}
+    .lb-close{flex:none;width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.1);
+      color:var(--g-text);font-size:20px;line-height:1;transition:border-color .25s,background .25s;}
+    .lb-close:hover{border-color:var(--g-accent1);background:color-mix(in oklch, var(--g-accent1) 18%, transparent);}
+    .lb-title{margin:0;font-family:'Noto Serif JP',serif;font-weight:600;font-size:28px;line-height:1.2;text-wrap:balance;}
+    .lb-date{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--g-muted);letter-spacing:.06em;}
+    .lb-rule{height:1px;background:linear-gradient(90deg, var(--acc-date-1), var(--acc-date-2) 50%, transparent);}
+    .lb-desc{margin:0;font-size:15px;line-height:1.7;color:rgba(243,236,228,.82);text-wrap:pretty;white-space:pre-wrap;}
+    .lb-desc:empty{display:none;}
+
+    .lb-react{display:flex;align-items:center;gap:10px;}
+    .lb-like{display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);color:var(--g-muted);
+      font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:.08em;
+      transition:border-color .2s,color .2s,background .2s,transform .2s;}
+    .lb-like:hover{border-color:var(--g-accent1);color:var(--g-text);}
+    .lb-like.on{border-color:var(--g-accent1);color:var(--g-accent1);background:color-mix(in oklch, var(--g-accent1) 14%, transparent);}
+    .lb-like.on svg{fill:var(--g-accent1);}
+    .lb-like:active{transform:scale(.95);}
+    .lb-cmtcount{font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:.08em;color:var(--g-muted);display:flex;align-items:center;gap:7px;}
+
+    .lb-cmts{display:flex;flex-direction:column;gap:14px;}
+    .lb-cmts-h{font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:.18em;color:var(--g-muted);text-transform:uppercase;}
+    /* The list needed room between entries — stacked blocks with no gap read
+       as one wall of text, which is what the screenshot showed. */
+    #lbCmtList{display:flex;flex-direction:column;gap:18px;}
+    .lb-cmt{display:flex;gap:14px;animation:gFade .4s ease both;}
+    .lb-cmt-rail{flex:none;width:2px;border-radius:2px;background:linear-gradient(180deg, var(--acc-cmt-1), var(--acc-cmt-2));}
+    .lb-cmt-body{display:flex;flex-direction:column;gap:4px;padding:2px 0;min-width:0;}
+    .lb-cmt-head{display:flex;align-items:baseline;gap:10px;}
+    .lb-cmt-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .lb-cmt-when{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--g-muted);}
+    .lb-cmt-text{font-size:14px;line-height:1.6;color:rgba(243,236,228,.8);white-space:pre-wrap;word-break:break-word;}
+    .lb-cmt-empty{font-size:14px;color:var(--g-muted);}
+
+    .lb-form{display:flex;flex-direction:column;gap:10px;margin-top:auto;padding-top:18px;border-top:1px solid rgba(255,255,255,.07);}
+    .lb-input,.lb-textarea{width:100%;padding:0 14px;height:44px;border-radius:10px;border:1px solid rgba(255,255,255,.1);
+      background:rgba(0,0,0,.25);color:var(--g-text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color .2s;}
+    .lb-textarea{height:auto;padding:12px 14px;line-height:1.5;resize:vertical;min-height:78px;max-height:200px;}
+    .lb-input:focus,.lb-textarea:focus{border-color:var(--g-accent2);}
+    .lb-form-row{display:flex;align-items:center;justify-content:flex-end;gap:12px;}
+    .lb-status{margin-right:auto;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--g-muted);}
+    .lb-status.err{color:#ff9aa8;} .lb-status.ok{color:#9ae6b4;}
+    .lb-send{height:44px;padding:0 22px;border-radius:10px;background:var(--g-accent1);color:#fff;
+      font-weight:600;font-size:14px;transition:filter .2s,opacity .2s;}
+    .lb-send:hover{filter:brightness(1.12);}
+    .lb-send:disabled{opacity:.5;cursor:default;filter:none;}
+
+    @media (max-width:860px){
+      .lb-side{border-left:0;border-top:1px solid rgba(255,255,255,.07);max-height:none;}
+      .lb-frame{width:100%;}
+    }
+    @media (max-width:640px){
+      .nav-burger{top:13px;left:.85rem;}
+      .nav-side{padding-top:4rem;}
+      .g-top{padding-left:72px;}
+    }
+    @media (prefers-reduced-motion: reduce){
+      html{scroll-behavior:auto;}
+      *,*::before,*::after{animation:none!important;transition-duration:.01ms!important;}
+      .nav-side,.nav-scrim{transition:transform .01ms linear, opacity .01ms linear, visibility 0s!important;}
+      .g-tile:hover{transform:none;}
+      .g-tile:hover .g-shot img{transform:none;}
+    }
+  </style>
+</head>
+<body>
+
+<div class="g-bg"></div>
+<video class="g-video" id="gVideo" muted loop playsinline webkit-playsinline preload="auto" disablepictureinpicture aria-hidden="true"></video>
+<div class="g-tint" id="gTint"></div>
+<canvas class="g-fx" id="gFx" aria-hidden="true"></canvas>
+
+<!-- NAV -->
+<button class="nav-burger" id="navBurger" type="button" aria-label="Open navigation" aria-expanded="false">
+  <span></span><span></span><span></span>
+</button>
+<div class="nav-scrim" id="navScrim" aria-hidden="true"></div>
+<aside class="nav-side" id="navSide" aria-hidden="true" aria-label="Site navigation">
+  <div class="nav-side-brand">
+    <span class="nav-side-mark"><img id="navSideAvatar" src="/favicon.png" alt=""/></span>
+    <span class="nav-side-brandtext">
+      <span class="nav-side-title" id="navSideTitle"></span>
+      <span class="nav-side-sub">navigation</span>
+    </span>
+  </div>
+  <nav class="nav-options">
+    <button class="nav-option" id="navOptHome" type="button">
+      <span class="nav-option-num">01</span><span class="nav-option-label">Home</span>
+    </button>
+    <button class="nav-option is-here" id="navOptGallery" type="button">
+      <span class="nav-option-num">02</span><span class="nav-option-label">Gallery</span>
+      <span class="nav-option-sub">you are here</span>
+    </button>
+  </nav>
+</aside>
+
+<header class="g-top"><span id="gTopHost"></span> <i>/</i> <em>gallery</em></header>
+
+<section class="g-hero">
+  <div class="g-eyebrow">写真館</div>
+  <span class="g-titlewrap"><h1 class="g-title" id="galTitle">Gallery</h1></span>
+  <div class="g-rule"></div>
+  <div class="g-herofoot">
+    <p class="g-desc" id="galDesc"></p>
+    <div class="g-stat"><b id="galCount">00</b><span>Shots</span></div>
+  </div>
+</section>
+
+<main class="g-main">
+  <div id="galSections"></div>
+  <div class="g-state" id="galState" style="display:none;">
+    <span class="bar"></span><span class="msg">Nothing here to see yet!</span>
+  </div>
+</main>
+
+<footer class="g-foot" id="gFoot"></footer>
+
+<!-- EXPANDED VIEW -->
+<div class="lb-scrim" id="lbScrim" aria-hidden="true">
+  <div class="lb" role="dialog" aria-modal="true" aria-label="Photo" id="lb">
+    <div class="lb-stage">
+      <div class="lb-frame"><img id="lbImg" alt=""/></div>
+      <div class="lb-nav">
+        <button class="lb-arrow" id="lbPrev" type="button" aria-label="Previous photo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+        </button>
+        <span class="lb-pos"><b id="lbPos">01</b> / <span id="lbTotal">01</span></span>
+        <button class="lb-arrow" id="lbNext" type="button" aria-label="Next photo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
+        </button>
+      </div>
+      <span class="lb-hint">← → to browse</span>
+    </div>
+    <aside class="lb-side">
+      <div class="lb-side-top">
+        <span class="lb-game" id="lbGame"></span>
+        <button class="lb-close" id="lbClose" type="button" aria-label="Close">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <h3 class="lb-title" id="lbTitle"></h3>
+        <span class="lb-date" id="lbDate"></span>
+        <!-- Filled per photo; hidden entirely when nobody is recorded. -->
+        <div class="lb-by" id="lbBy" hidden>
+          <img id="lbByAvatar" alt="" />
+          <span>
+            <span class="lb-by-label">shot by</span><br />
+            <span class="lb-by-name" id="lbByName"></span>
+          </span>
+        </div>
+      </div>
+      <div class="lb-rule"></div>
+      <p class="lb-desc" id="lbDesc"></p>
+      <div class="lb-react">
+        <button class="lb-like" id="lbLike" type="button" aria-pressed="false">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z"></path></svg>
+          <span id="lbLikeCount">0</span>
+        </button>
+        <span class="lb-cmtcount">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.8 7L3 21l2-6.2A8 8 0 1 1 21 12z"></path></svg>
+          <span id="lbCmtCount">0</span>
+        </span>
+      </div>
+      <div class="lb-cmts">
+        <span class="lb-cmts-h" id="lbCmtsH">Comments</span>
+        <div id="lbCmtList"></div>
+      </div>
+      <form class="lb-form" id="lbForm">
+        <input class="lb-input" id="lbName" type="text" placeholder="Discord username" maxlength="50" autocomplete="off"/>
+        <textarea class="lb-textarea" id="lbBody" placeholder="Leave a comment" maxlength="600"></textarea>
+        <div class="lb-form-row">
+          <span class="lb-status" id="lbStatus"></span>
+          <button class="lb-send" id="lbSend" type="submit">Post comment</button>
+        </div>
+      </form>
+    </aside>
+  </div>
+</div>
+
+<!-- LOADER -->
+<div class="g-loader" id="gLoader" aria-hidden="false">
+  <div class="g-loader-in">
+    <span class="g-loader-jp">写真館</span>
+    <span class="g-loader-t" id="gLoaderTitle">Gallery</span>
+    <div class="g-loader-track"><div class="g-loader-fill" id="gLoadFill"></div></div>
+    <div class="g-loader-nums">
+      <span>Loading <span id="gLoadN">00</span> / <span id="gLoadT">00</span></span>
+      <span id="gLoadPct">0%</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════ THE SHARED GALLERY ════
+// The photos, comments and likes live on arandomperson.dev, which owns the
+// data. Visitors' browsers call it directly (cross-origin, no key): its rate
+// limits count per visitor, so routing these through this site would put
+// every visitor in one shared bucket. Only get-content stays on this site.
+const GALLERY_API = 'https://arandomperson.dev/.netlify/functions';
+
+// This site's own name, from wherever it's being served.
+const SITE_HOST = location.hostname.replace(/^www\./, '');
+(function initSiteName(){
+  const dot = SITE_HOST.indexOf('.');
+  const top = document.getElementById('gTopHost');
+  if (dot > 0) {
+    const b = document.createElement('b'); b.textContent = '.';
+    top.append(SITE_HOST.slice(0, dot), b, SITE_HOST.slice(dot + 1));
+  } else {
+    top.textContent = SITE_HOST;
+  }
+  document.getElementById('navSideTitle').textContent = SITE_HOST;
+  document.getElementById('gFoot').textContent = '© ' + new Date().getFullYear() + ' ' + SITE_HOST;
+})();
+
+// ════ SETTINGS → CSS ════
+// Every colour on this page is a variable written here from the Gallery
+// Editor's saved settings. The server has already collapsed a theme preset
+// over the individual colours, so there is one set of values to read and no
+// branching on "which mode is the owner in".
+(function initSettings(){
+  const hexRgb = (h) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(h || ''));
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255);
+  };
+
+  window.__applyGallerySettings = function (cfg) {
+    if (!cfg || typeof cfg !== 'object') return;
+    const cache = {};
+    const el = document.documentElement;
+    const set = (k, v) => { el.style.setProperty(k, v); cache[k] = v; };
+
+    const p = cfg.palette || {};
+    set('--g-bg1', (cfg.bg && cfg.bg.c1) || '#1a0f12');
+    set('--g-bg2', (cfg.bg && cfg.bg.c2) || '#0b090a');
+    if (p.accent1) set('--g-accent1', p.accent1); else set('--g-accent1', (cfg.accents && cfg.accents.title.c1) || '#d7263d');
+    if (p.accent2) set('--g-accent2', p.accent2); else set('--g-accent2', (cfg.accents && cfg.accents.title.c2) || '#e3b04b');
+    if (p.text) set('--g-text', p.text);
+    if (p.muted) set('--g-muted', p.muted);
+    if (p.panel) set('--g-panel', p.panel);
+
+    const t = cfg.title || {};
+    // A font file the owner hosts, loaded with @font-face. The family name is
+    // theirs or derived from the filename; the format hint comes from the
+    // extension, because a browser that cannot guess the format silently
+    // refuses the face and you get the fallback with no error anywhere.
+    const FALLBACK = "'Noto Serif JP',serif";
+    if (t.fontUrl) {
+      const fam = (t.fontName || (t.fontUrl.split('/').pop() || 'Gallery').replace(/\.[a-z0-9]+$/i, '')).replace(/[^A-Za-z0-9 _-]/g, '') || 'GalleryTitle';
+      const ext = (t.fontUrl.split('.').pop() || '').toLowerCase().split(/[?#]/)[0];
+      const fmt = { woff2: 'woff2', woff: 'woff', ttf: 'truetype', otf: 'opentype' }[ext];
+      let tag = document.getElementById('galFontFace');
+      if (!tag) { tag = document.createElement('style'); tag.id = 'galFontFace'; document.head.appendChild(tag); }
+      tag.textContent = '@font-face{font-family:"' + fam + '";'
+        + 'src:url("' + t.fontUrl.replace(/"/g, '%22') + '")' + (fmt ? ' format("' + fmt + '")' : '') + ';'
+        + 'font-display:swap;font-weight:100 900;}';
+      set('--g-title-font', '"' + fam + '",' + FALLBACK);
+    } else {
+      const tag = document.getElementById('galFontFace');
+      if (tag) tag.textContent = '';
+      set('--g-title-font', FALLBACK);
+    }
+    set('--g-title-c1', t.c1 || '#d7263d');
+    set('--g-title-c2', t.c2 || '#e3b04b');
+    set('--g-title-angle', (typeof t.angle === 'number' ? t.angle : 135) + 'deg');
+
+    const a = cfg.accents || {};
+    if (a.title) { set('--acc-title-1', a.title.c1); set('--acc-title-2', a.title.c2); }
+    if (a.date) { set('--acc-date-1', a.date.c1); set('--acc-date-2', a.date.c2); }
+    if (a.comment) { set('--acc-cmt-1', a.comment.c1); set('--acc-cmt-2', a.comment.c2); }
+
+    set('--g-tile-min', cfg.density === 'compact' ? '210px' : '290px');
+    set('--g-glass', cfg.tileGlass === false ? '1' : '.55');
+    el.setAttribute('data-gglass', cfg.tileGlass === false ? 'off' : 'on');
+
+    // ── the video background ──
+    // Mobile gets its own file when one is set, because a desktop-sized video
+    // on a phone is mostly wasted bytes; blank means share the desktop one.
+    const vid = document.getElementById('gVideo');
+    const tint = document.getElementById('gTint');
+    const v = cfg.video || {};
+    const small = window.matchMedia('(max-width: 768px)').matches;
+    const src = v.enabled ? ((small && v.mobileUrl) ? v.mobileUrl : v.desktopUrl) : '';
+    if (src) {
+      if (vid.dataset.src !== src) { vid.dataset.src = src; vid.src = src; try { vid.load(); } catch (e) {} }
+      vid.play().catch(() => {});
+      vid.classList.add('on');
+      el.setAttribute('data-gvideo', '1');       // the title gets its blur plate
+      // The SAME wash the main site lays over its background video: three
+      // stops, heavier top and bottom, lightest around 45% down, with the
+      // strength slider scaling all three. A flat two-stop ramp was close but
+      // visibly not the same thing when you walk between the two pages.
+      const rgb = hexRgb(v.tint) || '0,0,0';
+      const strength = Math.max(0, Math.min(100, typeof v.tintStrength === 'number' ? v.tintStrength : 45)) / 100;
+      const a = (base) => Math.min(0.96, base * strength).toFixed(3);
+      tint.style.background =
+        'linear-gradient(180deg,' +
+        ' rgba(' + rgb + ',' + a(0.62) + ') 0%,' +
+        ' rgba(' + rgb + ',' + a(0.30) + ') 45%,' +
+        ' rgba(' + rgb + ',' + a(0.76) + ') 100%)';
+      tint.classList.add('on');
+    } else {
+      vid.classList.remove('on');
+      vid.removeAttribute('src'); delete vid.dataset.src;
+      try { vid.load(); } catch (e) {}
+      el.removeAttribute('data-gvideo');
+      // No video, no wash: tinting a gradient the owner already chose the
+      // colour of would just be muddying their own setting.
+      tint.classList.remove('on');
+    }
+
+    try { localStorage.setItem('galleryThemeCache', JSON.stringify(cache)); } catch (e) {}
+    el.classList.add('theme-ready');
+  };
+  window.__galleryThemeReady = function(){ document.documentElement.classList.add('theme-ready'); };
+})();
+
+// ════ THE DRAWER'S OWN COLOURS ════
+// These come from the MAIN SITE's theme, not the gallery's, so walking between
+// the two pages doesn't change the colour of the navigation under you. This
+// site has no sidebar settings, so the drawer takes its site accent (UI Editor
+// → Color & glow) and its page background colour; sidebar* fields still win
+// if a theme ever has them.
+(function initNavTheme(){
+  const hexRgb = (h) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(h || ''));
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255);
+  };
+  window.__applyNavTheme = function (theme) {
+    if (!theme) return;
+    const el = document.documentElement;
+    const bg = hexRgb(theme.sidebarColor) || hexRgb(theme.bgColor2);
+    const acc = hexRgb(theme.sidebarAccent) || hexRgb(theme.siteAccent);
+    if (bg) el.style.setProperty('--nav-bg', bg); else el.style.removeProperty('--nav-bg');
+    if (acc) { el.style.setProperty('--nav-accent', acc); el.style.setProperty('--nav-accent2', acc); }
+    else { el.style.removeProperty('--nav-accent'); el.style.removeProperty('--nav-accent2'); }
+    const alpha = Math.max(0, Math.min(100, typeof theme.sidebarOpacity === 'number' ? theme.sidebarOpacity : 90)) / 100;
+    el.style.setProperty('--nav-alpha', alpha.toFixed(3));
+  };
+})();
+
+// ════ NAV DRAWER ════
+(function initNav(){
+  const burger = document.getElementById('navBurger');
+  const side   = document.getElementById('navSide');
+  const scrim  = document.getElementById('navScrim');
+  if (!burger || !side || !scrim) return;
+
+  try {
+    const cached = localStorage.getItem('avatarUrlCache');
+    const mark = document.getElementById('navSideAvatar');
+    if (mark && cached && /^https?:\/\//.test(cached)) {
+      mark.addEventListener('error', () => { mark.src = '/favicon.png'; }, { once: true });
+      mark.src = cached;
+    }
+  } catch (e) {}
+
+  const open = () => {
+    side.classList.add('open'); scrim.classList.add('open');
+    side.setAttribute('aria-hidden', 'false');
+    burger.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('nav-open');
+  };
+  const close = () => {
+    side.classList.remove('open'); scrim.classList.remove('open');
+    side.setAttribute('aria-hidden', 'true');
+    burger.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('nav-open');
+  };
+  burger.addEventListener('click', () => { side.classList.contains('open') ? close() : open(); });
+  scrim.addEventListener('click', close);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && side.classList.contains('open')) close();
+  });
+
+  document.getElementById('navOptHome').addEventListener('click', () => { window.location.href = '/'; });
+  document.getElementById('navOptGallery').addEventListener('click', close);
+})();
+
+// ════ OVERLAY EFFECTS ════
+// Snow, petals or rain drifting over the page. One canvas, three behaviours,
+// and nothing at all running when the setting is off or motion is reduced —
+// an idle requestAnimationFrame loop is a battery cost for no picture.
+(function initOverlay(){
+  const cv = document.getElementById('gFx');
+  const ctx = cv && cv.getContext ? cv.getContext('2d') : null;
+  if (!ctx) return;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // `mode` starts as null rather than 'none' so the FIRST call always applies.
+  // Starting it at 'none' made "turn the overlay off" a no-op on load, which
+  // left an empty canvas sitting over the page doing nothing visible but
+  // reporting itself as shown.
+  let raf = 0, parts = [], mode = null, w = 0, h = 0, dpr = 1;
+
+  function size(){
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    w = cv.clientWidth; h = cv.clientHeight;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  function seed(){
+    // Fewer on a phone: the same count that reads as weather on a desktop
+    // reads as static on a 390px screen, and costs more per pixel.
+    const base = w < 700 ? 34 : 70;
+    const n = mode === 'rain' ? Math.round(base * 1.3) : base;
+    parts = [];
+    for (let i = 0; i < n; i++) {
+      parts.push({
+        x: rnd(0, w), y: rnd(-h, h),
+        r: mode === 'rain' ? rnd(6, 16) : rnd(1.6, 4.2),
+        s: mode === 'rain' ? rnd(7, 13) : rnd(.5, 1.7),
+        d: rnd(-.5, .5), a: rnd(.25, .75),
+        rot: rnd(0, Math.PI * 2), spin: rnd(-.03, .03),
+      });
+    }
+  }
+
+  function frame(){
+    ctx.clearRect(0, 0, w, h);
+    for (const p of parts) {
+      if (mode === 'rain') {
+        ctx.strokeStyle = 'rgba(190,210,235,' + (p.a * .5).toFixed(2) + ')';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.d * 2, p.y + p.r); ctx.stroke();
+        p.y += p.s * 2.2; p.x += p.d;
+      } else if (mode === 'petals') {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = 'rgba(255,183,197,' + p.a.toFixed(2) + ')';
+        ctx.beginPath(); ctx.ellipse(0, 0, p.r * 1.5, p.r * .8, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        p.y += p.s; p.x += Math.sin(p.y / 40) * .8 + p.d; p.rot += p.spin;
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,' + p.a.toFixed(2) + ')';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+        p.y += p.s; p.x += Math.sin(p.y / 55) * .5 + p.d;
+      }
+      if (p.y > h + 24) { p.y = -20; p.x = rnd(0, w); }
+      if (p.x < -30) p.x = w + 20; else if (p.x > w + 30) p.x = -20;
+    }
+    raf = requestAnimationFrame(frame);
+  }
+
+  window.__setGalleryOverlay = function (next){
+    const want = ['snow', 'petals', 'rain'].indexOf(next) !== -1 ? next : 'none';
+    if (want === mode) return;
+    mode = want;
+    cancelAnimationFrame(raf); raf = 0;
+    ctx.clearRect(0, 0, w, h);
+    if (mode === 'none' || reduce) { cv.style.display = 'none'; return; }
+    // 'block', not '': the stylesheet hides this by default so an unconfigured
+    // page never shows an empty canvas, and clearing the inline value would
+    // just hand it back to that rule.
+    cv.style.display = 'block';
+    size(); seed(); raf = requestAnimationFrame(frame);
+  };
+  window.addEventListener('resize', () => { if (mode !== 'none' && !reduce) { size(); seed(); } }, { passive: true });
+  // A hidden tab should not be animating weather nobody can see.
+  document.addEventListener('visibilitychange', () => {
+    if (mode === 'none' || reduce) return;
+    if (document.hidden) { cancelAnimationFrame(raf); raf = 0; }
+    else if (!raf) raf = requestAnimationFrame(frame);
+  });
+})();
+
+// ════ THE GALLERY ════
+(function initGallery(){
+  const sectionsEl = document.getElementById('galSections');
+  const stateEl    = document.getElementById('galState');
+  const descEl     = document.getElementById('galDesc');
+  const titleEl    = document.getElementById('galTitle');
+  const countEl    = document.getElementById('galCount');
+
+  const loader   = document.getElementById('gLoader');
+  const loadFill = document.getElementById('gLoadFill');
+  const loadN    = document.getElementById('gLoadN');
+  const loadT    = document.getElementById('gLoadT');
+  const loadPct  = document.getElementById('gLoadPct');
+  const loaderTitle = document.getElementById('gLoaderTitle');
+
+  const lbScrim = document.getElementById('lbScrim');
+  const lbImg   = document.getElementById('lbImg');
+  const lbGame  = document.getElementById('lbGame');
+  const lbTitle = document.getElementById('lbTitle');
+  const lbDate  = document.getElementById('lbDate');
+  const lbBy       = document.getElementById('lbBy');
+  const lbByName   = document.getElementById('lbByName');
+  const lbByAvatar = document.getElementById('lbByAvatar');
+  const lbDesc  = document.getElementById('lbDesc');
+  const lbList  = document.getElementById('lbCmtList');
+  const lbCmtsH = document.getElementById('lbCmtsH');
+  const lbCmtCount = document.getElementById('lbCmtCount');
+  const lbLike  = document.getElementById('lbLike');
+  const lbLikeCount = document.getElementById('lbLikeCount');
+  const lbForm  = document.getElementById('lbForm');
+  const lbName  = document.getElementById('lbName');
+  const lbBody  = document.getElementById('lbBody');
+  const lbSend  = document.getElementById('lbSend');
+  const lbStatus= document.getElementById('lbStatus');
+  const lbPrev  = document.getElementById('lbPrev');
+  const lbNext  = document.getElementById('lbNext');
+  const lbClose = document.getElementById('lbClose');
+  const lbPos   = document.getElementById('lbPos');
+  const lbTotal = document.getElementById('lbTotal');
+
+  let catalogue = { title: '', intro: '', sections: [], images: [], config: null };
+  let flat = [];
+  let openIndex = -1;
+  let lastFocus = null;
+  let likesOn = true;
+
+  const NAME_KEY = 'arp_gallery_name';
+  const COOLDOWN_KEY = 'arp_gallery_last';
+  const LIKED_KEY = 'arp_gallery_liked';
+  const COOLDOWN_MS = 30000;
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+
+  // An ISO date becomes prose; anything else the owner typed prints verbatim.
+  function fmtDate(raw){
+    const t = (raw || '').trim();
+    if (!t) return '';
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+    if (m) {
+      const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+      if (!isNaN(d.getTime())) {
+        try { return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }); } catch (e) {}
+      }
+    }
+    return t;
+  }
+  function relTime(t){
+    if (!t) return '';
+    const s = Math.floor((Date.now() - t) / 1000);
+    if (s < 60) return 'just now';
+    const m = Math.floor(s / 60); if (m < 60) return m + 'm ago';
+    const h = Math.floor(m / 60); if (h < 24) return h + 'h ago';
+    const d = Math.floor(h / 24); if (d < 7) return d + 'd ago';
+    try { return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e) { return ''; }
+  }
+
+  // ── which photos this browser has liked ──
+  const likedSet = () => {
+    try { const a = JSON.parse(localStorage.getItem(LIKED_KEY) || '[]'); return new Set(Array.isArray(a) ? a : []); }
+    catch { return new Set(); }
+  };
+  const saveLiked = (set) => { try { localStorage.setItem(LIKED_KEY, JSON.stringify([...set])); } catch (e) {} };
+
+  const icon = (kind) => {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', '13'); svg.setAttribute('height', '13');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', kind === 'like'
+      ? 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z'
+      : 'M21 12a8 8 0 0 1-11.8 7L3 21l2-6.2A8 8 0 1 1 21 12z');
+    svg.appendChild(path);
+    return svg;
+  };
+
+  function tile(entry, index){
+    const btn = document.createElement('button');
+    btn.className = 'g-tile'; btn.type = 'button';
+    btn.setAttribute('aria-label', 'Open ' + (entry.img.title || 'photo'));
+
+    const shot = document.createElement('div'); shot.className = 'g-shot';
+    const im = document.createElement('img');
+    im.loading = 'eager'; im.decoding = 'async'; im.draggable = false;
+    if (entry.img.width > 0 && entry.img.height > 0) { im.width = entry.img.width; im.height = entry.img.height; }
+    im.alt = entry.img.title || '';
+    im.addEventListener('error', () => { shot.classList.add('broken'); im.remove(); }, { once: true });
+    im.src = entry.img.url;
+    shot.appendChild(im);
+
+    const cap = document.createElement('div'); cap.className = 'g-cap';
+    if (entry.img.title) {
+      const t = document.createElement('div'); t.className = 'g-cap-title'; t.textContent = entry.img.title;
+      cap.appendChild(t);
+    }
+    const meta = document.createElement('div'); meta.className = 'g-cap-meta';
+    const date = document.createElement('span'); date.textContent = fmtDate(entry.img.date);
+    const counts = document.createElement('span'); counts.className = 'g-counts';
+
+    if (likesOn) {
+      const l = document.createElement('span'); l.className = 'g-count g-count-like';
+      l.appendChild(icon('like'));
+      const ln = document.createElement('span'); ln.textContent = String(entry.img.likes || 0);
+      l.appendChild(ln); counts.appendChild(l);
+    }
+    const c = document.createElement('span'); c.className = 'g-count g-count-cmt';
+    c.appendChild(icon('cmt'));
+    const cn = document.createElement('span'); cn.textContent = String(entry.img.comments || 0);
+    c.appendChild(cn); counts.appendChild(c);
+
+    meta.appendChild(date); meta.appendChild(counts);
+
+    // The credit sits between the title and the meta row, in its own element.
+    // A photo with no recorded owner renders exactly as it did before — no
+    // empty chip, no stray separator.
+    const by = ownerChip(entry.img.owner);
+    if (by) cap.appendChild(by);
+    cap.appendChild(meta);
+    btn.appendChild(shot); btn.appendChild(cap);
+    btn.addEventListener('click', () => openLightbox(index));
+    return btn;
+  }
+
+  // One photographer's credit, or null when there is nobody to credit. The
+  // payload carries a display name, an avatar and a short opaque ref — never a
+  // Discord id, which the page has no use for and no business publishing.
+  function ownerChip(owner){
+    if (!owner || !owner.name) return null;
+    const by = document.createElement('div');
+    by.className = 'g-cap-by';
+    by.title = 'Photo by ' + owner.name;
+    if (owner.avatar) {
+      const a = document.createElement('img');
+      a.src = owner.avatar; a.alt = ''; a.loading = 'lazy'; a.decoding = 'async';
+      a.addEventListener('error', () => a.remove());
+      by.appendChild(a);
+    }
+    const n = document.createElement('span');
+    n.textContent = owner.name;
+    by.appendChild(n);
+    return by;
+  }
+
+  function refreshTileCounts(entry){
+    if (!entry || !entry.el) return;
+    const like = entry.el.querySelector('.g-count-like span:last-child');
+    const cmt = entry.el.querySelector('.g-count-cmt span:last-child');
+    if (like) like.textContent = String(entry.img.likes || 0);
+    if (cmt) cmt.textContent = String(entry.img.comments || 0);
+  }
+
+  function showEmpty(){
+    stateEl.style.display = '';
+    sectionsEl.classList.remove('staging');
+  }
+
+  function render(){
+    sectionsEl.textContent = '';
+    sectionsEl.classList.remove('revealed');
+    sectionsEl.classList.add('staging');
+    stateEl.style.display = 'none';
+    flat = [];
+
+    let total = 0, n = 0;
+    catalogue.sections.forEach((sec, si) => {
+      const mine = catalogue.images.filter((im) => im.sectionId === sec.id);
+      if (!mine.length) return;
+      total += mine.length;
+
+      const wrap = document.createElement('section'); wrap.className = 'g-section';
+      const head = document.createElement('div'); head.className = 'g-sec-head';
+
+      const num = document.createElement('span'); num.className = 'g-sec-num'; num.textContent = pad(si + 1);
+      const names = document.createElement('div'); names.className = 'g-sec-names';
+      const jp = document.createElement('span'); jp.className = 'g-sec-jp'; jp.textContent = sec.jp || '';
+      const nm = document.createElement('h2'); nm.className = 'g-sec-name'; nm.textContent = sec.name;
+      names.appendChild(jp); names.appendChild(nm);
+      const line = document.createElement('div'); line.className = 'g-sec-line';
+      const cnt = document.createElement('span'); cnt.className = 'g-sec-count';
+      cnt.textContent = pad(mine.length) + ' screenshots';
+
+      head.appendChild(num); head.appendChild(names); head.appendChild(line); head.appendChild(cnt);
+      wrap.appendChild(head);
+
+      const grid = document.createElement('div'); grid.className = 'g-grid';
+      mine.forEach((im) => {
+        const index = flat.length;
+        const entry = { img: im, sectionName: sec.name, el: null };
+        flat.push(entry);
+        entry.el = tile(entry, index);
+        grid.appendChild(entry.el);
+        n++;
+      });
+      wrap.appendChild(grid);
+      sectionsEl.appendChild(wrap);
+    });
+
+    countEl.textContent = pad(total);
+    lbTotal.textContent = pad(flat.length);
+
+    if (!total) { showEmpty(); return; }
+
+    sectionsEl.querySelectorAll('.g-section').forEach((s, i) => s.style.setProperty('--d', (i * 90) + 'ms'));
+    sectionsEl.querySelectorAll('.g-tile').forEach((el, i) => el.style.setProperty('--d', (120 + i * 55) + 'ms'));
+    sectionsEl.classList.remove('staging');
+    sectionsEl.classList.add('revealed');
+  }
+
+  // ── preload, then reveal ──
+  // The counter runs 00 → 10 regardless of how many photos there are: "0 / 2"
+  // told the visitor about an implementation detail, and jumped. Ten steps
+  // over a deliberate minimum of five seconds reads as a loading screen rather
+  // than a flicker, and the bar is eased so it glides instead of stepping.
+  //
+  // A photo that fails counts as done — one dead URL must not hold the page —
+  // and a hard ceiling applies in case a request simply never answers.
+  const LOAD_STEPS = 10;
+  const MIN_LOAD_MS = 5000;
+  const MAX_LOAD_MS = 20000;
+
+  function setProgress(fraction){
+    const f = Math.max(0, Math.min(1, fraction));
+    const step = Math.round(f * LOAD_STEPS);
+    loadFill.style.width = (f * 100).toFixed(1) + '%';
+    loadN.textContent = pad(step);
+    loadT.textContent = pad(LOAD_STEPS);
+    loadPct.textContent = Math.round(f * 100) + '%';
+  }
+
+  // Resolves once BOTH are true: every image is in the cache, and the minimum
+  // time has passed. The bar tracks whichever of the two is further behind, so
+  // it never races ahead of the slower one and then sits still.
+  function preload(urls){
+    return new Promise((resolve) => {
+      const started = Date.now();
+      let loaded = 0;
+      const total = urls.length;
+      let settled = false;
+
+      const finish = () => { if (settled) return; settled = true; cancelAnimationFrame(tickRaf); setProgress(1); resolve(); };
+
+      urls.forEach((u) => {
+        const im = new Image();
+        im.onload = im.onerror = () => { loaded++; };
+        im.src = u;
+      });
+
+      let tickRaf = 0;
+      const tick = () => {
+        const elapsed = Date.now() - started;
+        const byTime = Math.min(1, elapsed / MIN_LOAD_MS);
+        const byImages = total ? loaded / total : 1;
+        setProgress(Math.min(byTime, byImages));
+        if ((byImages >= 1 && elapsed >= MIN_LOAD_MS) || elapsed >= MAX_LOAD_MS) { finish(); return; }
+        tickRaf = requestAnimationFrame(tick);
+      };
+      tickRaf = requestAnimationFrame(tick);
+    });
+  }
+
+  function finishLoading(){
+    // Paint the grid underneath BEFORE the curtain starts to move, so the
+    // fade reveals a finished page rather than one still assembling.
+    requestAnimationFrame(() => {
+      loader.classList.add('done');
+      loader.setAttribute('aria-hidden', 'true');
+      setTimeout(() => { loader.style.display = 'none'; }, 900);
+    });
+  }
+
+  async function load(){
+    let d = null;
+    try {
+      const res = await fetch(GALLERY_API + '/get-gallery', { cache: 'no-store' });
+      if (res.ok) d = await res.json();
+    } catch (e) {}
+
+    if (!d) {
+      stateEl.querySelector('.msg').textContent = "Couldn't load the gallery";
+      showEmpty();
+      setProgress(1);
+      finishLoading();
+      return;
+    }
+
+    catalogue = {
+      title: typeof d.title === 'string' ? d.title : '',
+      intro: typeof d.intro === 'string' ? d.intro : '',
+      sections: Array.isArray(d.sections) ? d.sections : [],
+      images: Array.isArray(d.images) ? d.images : [],
+      config: d.config || null,
+    };
+
+    if (catalogue.config) {
+      likesOn = catalogue.config.likes !== false;
+      if (window.__applyGallerySettings) window.__applyGallerySettings(catalogue.config);
+      if (window.__setGalleryOverlay) window.__setGalleryOverlay(catalogue.config.overlay);
+    } else if (window.__galleryThemeReady) {
+      window.__galleryThemeReady();
+    }
+
+    const heading = (catalogue.config && catalogue.config.title && catalogue.config.title.text) || catalogue.title || 'Gallery';
+    titleEl.textContent = heading;
+    loaderTitle.textContent = heading;
+    document.title = heading + ' · ' + SITE_HOST;
+    descEl.textContent = (catalogue.config && catalogue.config.description) || catalogue.intro || '';
+
+    const urls = catalogue.images.map((im) => im.url).filter(Boolean);
+    setProgress(0);
+    await preload(urls);
+    render();
+    finishLoading();
+  }
+
+  // ── the expanded view ──
+  function setStatus(msg, kind){
+    lbStatus.textContent = msg || '';
+    lbStatus.className = 'lb-status' + (kind ? ' ' + kind : '');
+  }
+
+  function renderComments(list){
+    lbList.textContent = '';
+    if (!list || !list.length) {
+      const e = document.createElement('span'); e.className = 'lb-cmt-empty';
+      e.textContent = 'No comments yet — be the first.';
+      lbList.appendChild(e);
+      lbCmtsH.textContent = 'Comments';
+      return;
+    }
+    lbCmtsH.textContent = 'Comments · ' + list.length;
+    const frag = document.createDocumentFragment();
+    list.forEach((c) => {
+      const row = document.createElement('div'); row.className = 'lb-cmt';
+      const rail = document.createElement('div'); rail.className = 'lb-cmt-rail';
+      const body = document.createElement('div'); body.className = 'lb-cmt-body';
+      const head = document.createElement('div'); head.className = 'lb-cmt-head';
+      const nm = document.createElement('span'); nm.className = 'lb-cmt-name'; nm.textContent = c.username || 'anonymous';
+      const wh = document.createElement('span'); wh.className = 'lb-cmt-when'; wh.textContent = relTime(c.t);
+      head.appendChild(nm); head.appendChild(wh);
+      const tx = document.createElement('span'); tx.className = 'lb-cmt-text'; tx.textContent = c.comment || '';
+      body.appendChild(head); body.appendChild(tx);
+      row.appendChild(rail); row.appendChild(body);
+      frag.appendChild(row);
+    });
+    lbList.appendChild(frag);
+  }
+
+  async function loadComments(imageId){
+    lbList.textContent = '';
+    const l = document.createElement('span'); l.className = 'lb-cmt-empty'; l.textContent = 'loading…';
+    lbList.appendChild(l);
+    try {
+      const res = await fetch(GALLERY_API + '/get-gallery?image=' + encodeURIComponent(imageId), { cache: 'no-store' });
+      const d = res.ok ? await res.json() : { comments: [] };
+      const list = Array.isArray(d.comments) ? d.comments : [];
+      const entry = flat.find((f) => f.img.id === imageId);
+      if (entry) { entry.img.comments = list.length; refreshTileCounts(entry); }
+      if (openIndex >= 0 && flat[openIndex] && flat[openIndex].img.id === imageId) {
+        renderComments(list);
+        lbCmtCount.textContent = String(list.length);
+      }
+    } catch (e) {
+      if (openIndex >= 0 && flat[openIndex] && flat[openIndex].img.id === imageId) renderComments([]);
+    }
+  }
+
+  function paintLike(entry){
+    const liked = likedSet().has(entry.img.id);
+    lbLike.classList.toggle('on', liked);
+    lbLike.setAttribute('aria-pressed', liked ? 'true' : 'false');
+    lbLikeCount.textContent = String(entry.img.likes || 0);
+    lbLike.style.display = likesOn ? '' : 'none';
+  }
+
+  function paint(index){
+    const entry = flat[index];
+    if (!entry) return;
+    openIndex = index;
+    const img = entry.img;
+
+    lbImg.alt = img.title || '';
+    lbImg.src = img.url;
+    lbGame.textContent = entry.sectionName || '';
+    lbTitle.textContent = img.title || 'Untitled';
+    lbDate.textContent = fmtDate(img.date);
+
+    // Who took it. Two photographers share this gallery, so a visitor looking
+    // at one photo should be able to tell whose it is without comparing tiles.
+    const owner = img.owner;
+    if (owner && owner.name) {
+      lbByName.textContent = owner.name;
+      if (owner.avatar) { lbByAvatar.src = owner.avatar; lbByAvatar.hidden = false; }
+      else { lbByAvatar.removeAttribute('src'); lbByAvatar.hidden = true; }
+      lbBy.hidden = false;
+    } else {
+      lbBy.hidden = true;
+    }
+
+    lbDesc.textContent = img.description || '';
+    lbPos.textContent = pad(index + 1);
+    lbTotal.textContent = pad(flat.length);
+    lbCmtCount.textContent = String(img.comments || 0);
+    document.getElementById('lb').setAttribute('aria-label', img.title || 'Photo');
+
+    lbPrev.disabled = index <= 0;
+    lbNext.disabled = index >= flat.length - 1;
+    paintLike(entry);
+    setStatus('');
+    loadComments(img.id);
+  }
+
+  function openLightbox(index){
+    lastFocus = document.activeElement;
+    lbScrim.classList.add('open');
+    lbScrim.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('overlay-lock');
+    try { lbName.value = localStorage.getItem(NAME_KEY) || ''; } catch (e) {}
+    paint(index);
+    lbClose.focus();
+  }
+  // Closing is the X button's job and nothing else's: a stray click on the
+  // backdrop while reading, or a reflexive Escape, should not throw away the
+  // comment someone is halfway through typing.
+  function closeLightbox(){
+    lbScrim.classList.remove('open');
+    lbScrim.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('overlay-lock');
+    lbImg.removeAttribute('src');
+    openIndex = -1;
+    if (lastFocus && typeof lastFocus.focus === 'function') { try { lastFocus.focus(); } catch (e) {} }
+  }
+  const step = (d) => { const n = openIndex + d; if (n >= 0 && n < flat.length) paint(n); };
+
+  lbClose.addEventListener('click', closeLightbox);
+  lbPrev.addEventListener('click', () => step(-1));
+  lbNext.addEventListener('click', () => step(1));
+  document.addEventListener('keydown', (e) => {
+    if (!lbScrim.classList.contains('open')) return;
+    const typing = document.activeElement === lbName || document.activeElement === lbBody;
+    if (typing) return;
+    if (e.key === 'ArrowLeft') step(-1);
+    else if (e.key === 'ArrowRight') step(1);
+  });
+  document.getElementById('lb').addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const f = [...document.getElementById('lb').querySelectorAll('button:not([disabled]),input,textarea')];
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+
+  // ── liking ──
+  lbLike.addEventListener('click', async () => {
+    const entry = flat[openIndex];
+    if (!entry || !likesOn) return;
+    const set = likedSet();
+    const liked = !set.has(entry.img.id);
+    // Move the UI first; a like that waits on the network feels broken.
+    if (liked) set.add(entry.img.id); else set.delete(entry.img.id);
+    saveLiked(set);
+    entry.img.likes = Math.max(0, (entry.img.likes || 0) + (liked ? 1 : -1));
+    paintLike(entry); refreshTileCounts(entry);
+    try {
+      const res = await fetch(GALLERY_API + '/like-image', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageId: entry.img.id, liked }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && typeof d.likes === 'number') {
+        entry.img.likes = d.likes; paintLike(entry); refreshTileCounts(entry);
+      } else if (!res.ok) {
+        // Put it back the way it was rather than showing a number the server
+        // disagrees with.
+        if (liked) set.delete(entry.img.id); else set.add(entry.img.id);
+        saveLiked(set);
+        entry.img.likes = Math.max(0, (entry.img.likes || 0) + (liked ? -1 : 1));
+        paintLike(entry); refreshTileCounts(entry);
+      }
+    } catch (e) {}
+  });
+
+  // ── commenting ──
+  lbForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const entry = flat[openIndex];
+    if (!entry) return;
+    const username = lbName.value.trim();
+    const comment = lbBody.value.trim();
+    if (!username) { setStatus('add a discord username', 'err'); lbName.focus(); return; }
+    if (comment.length < 2) { setStatus('write a little more', 'err'); lbBody.focus(); return; }
+
+    try {
+      const last = parseInt(localStorage.getItem(COOLDOWN_KEY) || '0', 10) || 0;
+      const left = COOLDOWN_MS - (Date.now() - last);
+      if (left > 0) { setStatus('wait ' + Math.ceil(left / 1000) + 's', 'err'); return; }
+    } catch (e2) {}
+
+    lbSend.disabled = true;
+    setStatus('posting…');
+    try {
+      const res = await fetch(GALLERY_API + '/send-gallery-comment', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageId: entry.img.id, username, comment }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setStatus(d.error || 'could not post that', 'err'); lbSend.disabled = false; return; }
+      setStatus('posted ✓', 'ok');
+      lbBody.value = '';
+      try {
+        localStorage.setItem(NAME_KEY, username);
+        localStorage.setItem(COOLDOWN_KEY, String(Date.now()));
+      } catch (e3) {}
+      entry.img.comments = (entry.img.comments || 0) + 1;
+      refreshTileCounts(entry);
+      await loadComments(entry.img.id);
+    } catch (e4) {
+      setStatus('connection error', 'err');
+    }
+    lbSend.disabled = false;
+  });
+
+  // ── the photos are not yours to take ──
+  // Casual-only, and honestly so: the browser has to receive the bytes to show
+  // them, so anyone determined still can. This stops the reflex — right-click,
+  // save image — and nothing more.
+  document.addEventListener('contextmenu', (e) => {
+    if (e.target && e.target.tagName === 'IMG' && e.target.closest('.g-shot, .lb-frame')) e.preventDefault();
+  });
+  document.addEventListener('dragstart', (e) => {
+    if (e.target && e.target.tagName === 'IMG' && e.target.closest('.g-shot, .lb-frame')) e.preventDefault();
+  });
+
+  // ── boot ──
+  // The drawer's colours come from the main site's theme; everything else on
+  // this page comes from the gallery's own settings, which arrive with the
+  // catalogue. get-content is THIS site's, same-origin: it also brings this
+  // site's favicon and whose Discord avatar marks the drawer.
+  fetch('/.netlify/functions/get-content')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (!d) return;
+      if (d.theme && window.__applyNavTheme) window.__applyNavTheme(d.theme);
+      const fav = d.features && typeof d.features.faviconUrl === 'string' ? d.features.faviconUrl.trim() : '';
+      if (fav) document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => { l.removeAttribute('type'); l.href = fav; });
+      if (typeof d.discordUserId === 'string' && /^\d{15,25}$/.test(d.discordUserId)) syncNavAvatar(d.discordUserId);
+    })
+    .catch(() => {});
+  // The drawer's mark is this site owner's Discord avatar, live from Lanyard
+  // (the main page caches the same URL, which the drawer shows meanwhile).
+  function syncNavAvatar(id){
+    fetch('https://api.lanyard.rest/v1/users/' + id)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const u = j && j.success && j.data && j.data.discord_user;
+        if (!u || !u.avatar) return;
+        const url = 'https://cdn.discordapp.com/avatars/' + id + '/' + u.avatar + '.' + (u.avatar.startsWith('a_') ? 'gif' : 'png') + '?size=128';
+        const mark = document.getElementById('navSideAvatar');
+        if (mark && mark.src !== url) mark.src = url;
+        try { localStorage.setItem('avatarUrlCache', url); } catch (e) {}
+      })
+      .catch(() => {});
+  }
+  load();
+})();
+</script>
+
+</body>
+</html>

@@ -65,7 +65,7 @@ exports.handler = async (event) => {
   if (!limit.ok) return tooManyRequests(limit);
 
   const token = process.env.DISCORD_BOT_TOKEN;
-  const userId = String(process.env.DISCORD_USER_ID || '').trim();
+  const userId = String(process.env.SITE_OWNER_DISCORD_ID || process.env.DISCORD_USER_ID || '').trim();
   try {
     // With a bot configured, only the owner's own guild is ever looked up.
     let useBot = false;
