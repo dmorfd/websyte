@@ -640,6 +640,7 @@ const NAV = [
   { id: "content", label: "Content Editor", icon: Ico.doc },
   { id: "schedule", label: "Schedule", icon: Ico.doc },
   { id: "gallery", label: "Gallery", icon: Ico.layers },
+  { id: "gallery-editor", label: "Gallery Editor", icon: Ico.ui },
   { id: "ui", label: "UI Editor", icon: Ico.ui },
   { id: "presets", label: "Presets", icon: Ico.layers },
   { id: "badges", label: "Discord Badges", icon: Ico.badge },
@@ -2367,6 +2368,275 @@ function GalleryAdmin() {
   );
 }
 
+
+/* ═══════════════ GALLERY EDITOR (the shared gallery's look) ═══════════════ */
+// gallery-config is ONE shared setting: changing it here changes /gallery on
+// arandomperson.dev too (last write wins). Ported from arandomperson.dev's
+// panel; calls go through gallery-proxy (galleryCall), which adds the key.
+const GAL_THEMES = [
+  { id: "none", label: "None (pick your own colours)" },
+  { id: "indigo", label: "Indigo & Silver" },
+  { id: "jade", label: "Jade & Amber" },
+];
+const GAL_OVERLAYS = [
+  { id: "none", label: "None" },
+  { id: "snow", label: "Snowflakes" },
+  { id: "petals", label: "Falling petals" },
+  { id: "rain", label: "Rain" },
+];
+
+// Every field the editor touches, so a config missing one still renders.
+function galCfg(c) {
+  const o = (v) => (v && typeof v === "object" ? v : {});
+  const pair = (v, a, b) => ({ c1: isHex(o(v).c1) ? o(v).c1 : a, c2: isHex(o(v).c2) ? o(v).c2 : b });
+  const x = o(c), t = o(x.title), v = o(x.video), acc = o(x.accents);
+  return {
+    ...x,
+    theme: typeof x.theme === "string" ? x.theme : "none",
+    title: { ...t, text: t.text || "", fontUrl: t.fontUrl || "", fontName: t.fontName || "", ...pair(t, "#d7263d", "#e3b04b"), angle: typeof t.angle === "number" ? t.angle : 135 },
+    description: typeof x.description === "string" ? x.description : "",
+    density: x.density === "compact" ? "compact" : "comfortable",
+    tileGlass: x.tileGlass !== false,
+    likes: x.likes !== false,
+    overlay: typeof x.overlay === "string" ? x.overlay : "none",
+    bg: { ...o(x.bg), ...pair(x.bg, "#1a0f12", "#0b090a") },
+    video: { ...v, enabled: v.enabled === true, desktopUrl: v.desktopUrl || "", mobileUrl: v.mobileUrl || "", tint: isHex(v.tint) ? v.tint : "#000000", tintStrength: typeof v.tintStrength === "number" ? v.tintStrength : 45 },
+    accents: { ...acc, title: pair(acc.title, "#d7263d", "#e3b04b"), date: pair(acc.date, "#d7263d", "#e3b04b"), comment: pair(acc.comment, "#d7263d", "#e3b04b") },
+  };
+}
+
+// A colour pair, which this editor needs six of. `locked` greys it out when a
+// theme preset is in force — the preset decides these.
+function GalPair({ label, hint, c1, c2, onC1, onC2, locked }) {
+  return (
+    <div style={{ opacity: locked ? 0.45 : 1, pointerEvents: locked ? "none" : "auto" }}>
+      <div className="lbl">{label}{hint && <span className="field-sub"> {hint}</span>}</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="color-row" style={{ flex: 1, minWidth: 120 }}>
+          <input type="color" className="swatch" value={isHex(c1) ? c1 : "#000000"} disabled={locked} onChange={(e) => onC1(e.target.value)} />
+          <input className="input" value={c1} maxLength={7} disabled={locked} onChange={(e) => onC1(e.target.value)} />
+        </div>
+        <div className="color-row" style={{ flex: 1, minWidth: 120 }}>
+          <input type="color" className="swatch" value={isHex(c2) ? c2 : "#000000"} disabled={locked} onChange={(e) => onC2(e.target.value)} />
+          <input className="input" value={c2} maxLength={7} disabled={locked} onChange={(e) => onC2(e.target.value)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GalleryEditor() {
+  const [cfg, setCfg] = useState(null);
+  const [base, setBase] = useState(null);       // ...as the server has it
+  const [loadErr, setLoadErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [status, showStatus] = useSaveStatus();
+
+  const load = useCallback(async () => {
+    setLoadErr("");
+    try {
+      const r = await galleryCall({ action: "list" });
+      if (!r.ok) { setLoadErr(galleryError(r)); return; }
+      const c = galCfg(r.data.config);
+      setCfg(c); setBase(JSON.parse(JSON.stringify(c)));
+    } catch (e) { setLoadErr(e.message || "couldn't reach the gallery proxy"); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const publish = async () => {
+    if (!cfg) return;
+    if (JSON.stringify(cfg) === JSON.stringify(base)) { showStatus("0 things to publish"); return; }
+    setBusy(true);
+    try {
+      const r = await galleryCall({ action: "save-config", config: cfg });
+      if (!r.ok) showStatus(galleryError(r), "err");
+      else {
+        // Take the server's normalised copy back, so a value it clamped or
+        // rejected shows up here instead of sitting in the form looking saved.
+        if (r.data.config) { const c = galCfg(r.data.config); setCfg(c); setBase(JSON.parse(JSON.stringify(c))); }
+        else setBase(JSON.parse(JSON.stringify(cfg)));
+        showStatus("published ✓ — both sites");
+      }
+    } catch (e) { showStatus(e.message || "publish failed", "err"); }
+    setBusy(false);
+  };
+
+  if (!cfg) {
+    return (
+      <div className="sec-page">
+        <EditorHead title="Gallery Editor" meta={loadErr ? "" : "loading…"} status={status} onReset={load} />
+        {loadErr ? <div className="glass" style={{ fontSize: 12.5, color: "#ff9aa8", lineHeight: 1.6 }}>{loadErr}</div> : null}
+      </div>
+    );
+  }
+
+  const locked = cfg.theme !== "none";
+  const up = (patch) => setCfg(Object.assign({}, cfg, patch));
+  const upIn = (key, patch) => up({ [key]: Object.assign({}, cfg[key], patch) });
+  const upAcc = (which, patch) => up({ accents: Object.assign({}, cfg.accents, { [which]: Object.assign({}, cfg.accents[which], patch) }) });
+
+  return (
+    <div className="sec-page">
+      <EditorHead
+        title="Gallery Editor"
+        meta={"how /gallery looks on both sites · " + (locked ? "theme preset in force" : "your own colours")}
+        status={status} onReset={load} onPublish={publish} busy={busy}
+      />
+      <div className="glass" style={{ marginBottom: 14, fontSize: 12, color: "var(--ink-2)", lineHeight: 1.6 }}>
+        Shared with arandomperson.dev: one gallery, one look. Publishing here changes their /gallery too, and their changes show up here — last write wins.
+      </div>
+
+      <div className="sec-grid">
+        <div className="glass">
+          <div className="grp-head"><span className="grp-title">Theme</span></div>
+          <div className="ctl-stack">
+            <select className="input" value={cfg.theme} onChange={(e) => up({ theme: e.target.value })} aria-label="Gallery theme">
+              {GAL_THEMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+            <div className="field-sub">
+              {locked
+                ? "This preset sets every colour below. Choose None to edit them yourself."
+                : "Your own colours are in force. Pick a preset to override them all at once."}
+            </div>
+          </div>
+        </div>
+
+        <div className="glass">
+          <div className="grp-head"><span className="grp-title">Title</span></div>
+          <div className="ctl-stack">
+            <div>
+              <div className="lbl">Text <span className="field-sub">blank shows “Gallery”</span></div>
+              <input className="input" value={cfg.title.text} maxLength={60} placeholder="Gallery"
+                onChange={(e) => upIn("title", { text: e.target.value })} />
+            </div>
+            <div>
+              <div className="lbl">Font <span className="field-sub">a file you host</span></div>
+              <FontPicker
+                name={cfg.title.fontName || ""} url={cfg.title.fontUrl || ""}
+                onName={(v) => upIn("title", { fontName: v })} onUrl={(v) => upIn("title", { fontUrl: v })}
+                hint="Only the gallery title uses it. Upload the file to R2 and paste its public URL; the name is optional."
+              />
+            </div>
+            <GalPair label="Gradient" locked={locked}
+              c1={cfg.title.c1} c2={cfg.title.c2}
+              onC1={(v) => upIn("title", { c1: v })} onC2={(v) => upIn("title", { c2: v })} />
+            <div style={{ opacity: locked ? 0.45 : 1 }}>
+              <div className="sld-head"><span>Gradient angle</span><span className="sld-val">{cfg.title.angle}°</span></div>
+              <input className="slider" type="range" min="0" max="360" step="5" value={cfg.title.angle}
+                onChange={(e) => upIn("title", { angle: +e.target.value })} />
+            </div>
+            <div className="field-sub">The angle applies whichever colours are in force, preset or not.</div>
+          </div>
+        </div>
+
+        <div className="glass">
+          <div className="grp-head"><span className="grp-title">Description</span></div>
+          <textarea className="textarea" rows={4} maxLength={400} value={cfg.description}
+            placeholder="The line under the title."
+            onChange={(e) => up({ description: e.target.value })} />
+          <div className="field-sub" style={{ marginTop: 6 }}>{cfg.description.length}/400</div>
+        </div>
+
+        <div className="glass">
+          <div className="grp-head"><span className="grp-title">Layout</span></div>
+          <div className="ctl-stack">
+            <div>
+              <div className="lbl">Image density</div>
+              <select className="input" value={cfg.density} onChange={(e) => up({ density: e.target.value })}>
+                <option value="comfortable">Comfortable — larger tiles</option>
+                <option value="compact">Compact — more per row</option>
+              </select>
+            </div>
+            <div className="ctl-row">
+              <span>Glass under photos <span className="field-sub">the strip with the title and date</span></span>
+              <div className={"switch " + (cfg.tileGlass ? "on" : "")} role="switch" aria-checked={cfg.tileGlass}
+                onClick={() => up({ tileGlass: !cfg.tileGlass })}><div className="knob" /></div>
+            </div>
+            <div className="ctl-row">
+              <span>Likes <span className="field-sub">visitors can like an opened photo</span></span>
+              <div className={"switch " + (cfg.likes ? "on" : "")} role="switch" aria-checked={cfg.likes}
+                onClick={() => up({ likes: !cfg.likes })}><div className="knob" /></div>
+            </div>
+            <div>
+              <div className="lbl">Overlay effect</div>
+              <select className="input" value={cfg.overlay} onChange={(e) => up({ overlay: e.target.value })}>
+                {GAL_OVERLAYS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              <div className="field-sub">Drifts over the whole page. Off automatically for visitors who ask for reduced motion.</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass">
+          <div className="grp-head"><span className="grp-title">Background</span></div>
+          <div className="ctl-stack">
+            <GalPair label="Gradient" hint="top and bottom" locked={locked}
+              c1={cfg.bg.c1} c2={cfg.bg.c2}
+              onC1={(v) => up({ bg: Object.assign({}, cfg.bg, { c1: v }) })}
+              onC2={(v) => up({ bg: Object.assign({}, cfg.bg, { c2: v }) })} />
+            <div className="ctl-row">
+              <span>Video background</span>
+              <div className={"switch " + (cfg.video.enabled ? "on" : "")} role="switch" aria-checked={cfg.video.enabled}
+                onClick={() => upIn("video", { enabled: !cfg.video.enabled })}><div className="knob" /></div>
+            </div>
+            <div style={{ opacity: cfg.video.enabled ? 1 : 0.45, pointerEvents: cfg.video.enabled ? "auto" : "none" }}>
+              <div className="ctl-stack">
+                <div>
+                  <div className="lbl">Desktop video URL</div>
+                  <input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}
+                    value={cfg.video.desktopUrl} maxLength={500} placeholder="https://…r2.dev/gallery-bg.mp4"
+                    onChange={(e) => upIn("video", { desktopUrl: e.target.value })} />
+                </div>
+                <div>
+                  <div className="lbl">Mobile video URL <span className="field-sub">blank uses the desktop one</span></div>
+                  <input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}
+                    value={cfg.video.mobileUrl} maxLength={500} placeholder="https://…r2.dev/gallery-bg-mobile.mp4"
+                    onChange={(e) => upIn("video", { mobileUrl: e.target.value })} />
+                </div>
+                <div>
+                  <div className="lbl">Tint over the video</div>
+                  <div className="color-row">
+                    <input type="color" className="swatch" value={cfg.video.tint}
+                      onChange={(e) => upIn("video", { tint: e.target.value })} />
+                    <input className="input" value={cfg.video.tint} maxLength={7}
+                      onChange={(e) => upIn("video", { tint: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <div className="sld-head"><span>Tint strength</span><span className="sld-val">{cfg.video.tintStrength}%</span></div>
+                  <input className="slider" type="range" min="0" max="100" step="5" value={cfg.video.tintStrength}
+                    onChange={(e) => upIn("video", { tintStrength: +e.target.value })} />
+                </div>
+                <div className="field-sub">
+                  The tint only exists to make text readable over moving footage, so it goes away with the video.
+                </div>
+              </div>
+            </div>
+            <div className="field-sub">
+              With a video on, the title gets a soft blurred plate behind it so it stays legible.
+            </div>
+          </div>
+        </div>
+
+        <div className="glass">
+          <div className="grp-head"><span className="grp-title">Accent gradients</span></div>
+          <div className="ctl-stack">
+            <GalPair label="Under the title" locked={locked}
+              c1={cfg.accents.title.c1} c2={cfg.accents.title.c2}
+              onC1={(v) => upAcc("title", { c1: v })} onC2={(v) => upAcc("title", { c2: v })} />
+            <GalPair label="Under the date" hint="in the expanded view" locked={locked}
+              c1={cfg.accents.date.c1} c2={cfg.accents.date.c2}
+              onC1={(v) => upAcc("date", { c1: v })} onC2={(v) => upAcc("date", { c2: v })} />
+            <GalPair label="Beside comments" locked={locked}
+              c1={cfg.accents.comment.c1} c2={cfg.accents.comment.c2}
+              onC1={(v) => upAcc("comment", { c1: v })} onC2={(v) => upAcc("comment", { c2: v })} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UIEditor({ data, reload }) {
   const t = data.theme || {};
   const identity = useSiteIdentity();
@@ -2483,7 +2753,16 @@ function UIEditor({ data, reload }) {
   const [schedText, setSchedText] = useState(t.schedTextColor || "");
   const [schedFont, setSchedFont] = useState(t.schedFont || "");
   const [schedFontUrl, setSchedFontUrl] = useState(t.schedFontUrl || "");
+  const navOf = (tt) => ({
+    navColor: tt.sidebarColor || "",
+    navAccent: tt.sidebarAccent || "",
+    navAlpha: Math.max(0, Math.min(100, typeof tt.sidebarOpacity === "number" ? tt.sidebarOpacity : 90)),
+  });
+  const [navColor, setNavColor] = useState(navOf(t).navColor);
+  const [navAccent, setNavAccent] = useState(navOf(t).navAccent);
+  const [navAlpha, setNavAlpha] = useState(navOf(t).navAlpha);
   const syncSched = (tt) => {
+    const nv = navOf(tt); setNavColor(nv.navColor); setNavAccent(nv.navAccent); setNavAlpha(nv.navAlpha);
     setSchedStyle(tt.schedStyle === "tiles" ? "tiles" : "dots");
     setSchedOn(tt.schedOnColor || "");
     setSchedOff(tt.schedOffColor || "");
@@ -2530,6 +2809,8 @@ function UIEditor({ data, reload }) {
     if (!isHex(siteAccent)) { showStatus("invalid site accent hex", "err"); return; }
     if (frostedTint && !isHex(frostedTint)) { showStatus("invalid tint hex", "err"); return; }
     if (bgStarColor && !isHex(bgStarColor)) { showStatus("invalid star color hex", "err"); return; }
+    if (navColor && !isHex(navColor)) { showStatus("invalid sidebar panel hex", "err"); return; }
+    if (navAccent && !isHex(navAccent)) { showStatus("invalid sidebar accent hex", "err"); return; }
     for (const [v, what] of [[schedOn, "available"], [schedOff, "away"], [schedText, "label"]]) {
       if (v && !isHex(v)) { showStatus("invalid schedule " + what + " color hex", "err"); return; }
     }
@@ -2549,6 +2830,7 @@ function UIEditor({ data, reload }) {
         bgZoom, bgStars, bgStarColor,
         schedStyle, schedOnColor: schedOn, schedOffColor: schedOff, schedTextColor: schedText,
         schedFont: schedFont.trim(), schedFontUrl: schedFontUrl.trim(),
+        sidebarColor: navColor || "", sidebarAccent: navAccent || "", sidebarOpacity: navAlpha,
       });
       showStatus("saved ✓");
       if (typeof reload === "function") reload();
@@ -2782,6 +3064,49 @@ function UIEditor({ data, reload }) {
             <div className="ctl-row" style={{ opacity: favGrad ? 1 : 0.45 }}>
               <span>Animation <span className="field-sub">left-to-right sweep</span></span>
               <div className={"switch " + (favAnim && favGrad ? "on" : "")} onClick={() => favGrad && setFavAnim(!favAnim)} role="switch" aria-checked={favAnim && favGrad}><div className="knob" /></div>
+            </div>
+          </div>
+        </div>
+
+
+        {/* SIDEBAR — the gallery page's navigation drawer (this site only) */}
+        <div className="glass">
+          <div className="grp-title" style={{ marginBottom: 10 }}>Sidebar</div>
+          <div className="field-sub" style={{ marginBottom: 10 }}>
+            the navigation drawer behind the ☰ on /gallery. Leave both empty to follow the site accent and page background.
+          </div>
+          <div className="ctl-stack">
+            <div className="ctl-row">
+              <span>Panel</span>
+              <div className="color-row" style={{ flex: "0 0 auto" }}>
+                <input type="color" className="swatch"
+                  value={/^#[0-9a-fA-F]{6}$/.test(navColor) ? navColor : (isHex(bg2) ? bg2 : "#0d0408")}
+                  onChange={(e) => setNavColor(e.target.value)} aria-label="Sidebar panel colour" />
+                <input className="input" style={{ maxWidth: 110 }} value={navColor} maxLength={7}
+                  placeholder="default" onChange={(e) => setNavColor(e.target.value)} />
+                {navColor && <button className="btn btn-tiny" onClick={() => setNavColor("")}>clear</button>}
+              </div>
+            </div>
+            <div className="ctl-row">
+              <span>Accent</span>
+              <div className="color-row" style={{ flex: "0 0 auto" }}>
+                <input type="color" className="swatch"
+                  value={/^#[0-9a-fA-F]{6}$/.test(navAccent) ? navAccent : (isHex(siteAccent) ? siteAccent : "#d4a84b")}
+                  onChange={(e) => setNavAccent(e.target.value)} aria-label="Sidebar accent" />
+                <input className="input" style={{ maxWidth: 110 }} value={navAccent} maxLength={7}
+                  placeholder="default" onChange={(e) => setNavAccent(e.target.value)} />
+                {navAccent && <button className="btn btn-tiny" onClick={() => setNavAccent("")}>clear</button>}
+              </div>
+            </div>
+            <div>
+              <div className="sld-head"><span>Transparency</span><span className="sld-val">{navAlpha}%</span></div>
+              <input className="slider" type="range" min="0" max="100" step="1" value={navAlpha}
+                onChange={(e) => setNavAlpha(+e.target.value)} aria-label="Sidebar transparency" />
+            </div>
+            <div className="field-sub">
+              Accent covers the row numbers, the borders, the active row and the divider.
+              Transparency is how solid the pane is — 0 sees straight through to the page,
+              100 is opaque. The blur stays either way.
             </div>
           </div>
         </div>
@@ -4411,6 +4736,7 @@ function App() {
     else if (active === "content") content = <ContentEditor data={data} reload={reload} />;
     else if (active === "schedule") content = <SchedulePage data={data} reload={reload} />;
     else if (active === "gallery") content = <GalleryAdmin />;
+    else if (active === "gallery-editor") content = <GalleryEditor />;
     else if (active === "ui") content = <UIEditor data={data} reload={reload} />;
     else if (active === "presets") content = <Presets data={data} reload={reload} />;
     else if (active === "badges") content = <DiscordBadges data={data} reload={reload} />;

@@ -92,6 +92,11 @@ const DEFAULT_THEME = {
   bgZoom: false,
   bgStars: false,
   bgStarColor: '#b98cff',
+  // The gallery page's navigation drawer (UI Editor → Sidebar). Blank colours
+  // follow the site accent and page background.
+  sidebarColor: '',
+  sidebarAccent: '',
+  sidebarOpacity: 90,
   // Schedule section (UI Editor → Schedule). '' = follow the site's theme.
   schedStyle: 'dots',         // 'dots' | 'tiles'
   schedOnColor: '',           // available days ('' = site accent)

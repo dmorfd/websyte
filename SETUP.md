@@ -255,8 +255,12 @@ runs the Discord bot. This site is a client of it.
   **straight from the visitor's browser** to arandomperson.dev (its rate limits
   count per visitor). Only `get-content` stays on this site: it gives the
   drawer this site's accent and background colours, favicon and Discord avatar.
-- The gallery's look (colours, title font, video, overlay) is set from
-  arandomperson.dev's panel; this panel doesn't edit it.
+- **Admin → Gallery Editor** sets the gallery's look (theme preset, title,
+  font, colours, density, likes, overlay, video background). It is **one
+  shared setting**: publishing it changes `/gallery` on arandomperson.dev too,
+  and their changes show up here — last write wins.
+- **UI Editor → Sidebar** colours this site's `/gallery` drawer only (panel,
+  accent, transparency; blank colours follow the site accent and background).
 - Setup on Netlify: `GALLERY_API`, `GALLERY_KEY` (Functions scope),
   `SITE_OWNER_DISCORD_ID`, then redeploy. arandomperson.dev must have this site
   on its roster with the exact origin `https://dmorfd.netlify.app`; otherwise
