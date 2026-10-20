@@ -38,7 +38,12 @@ exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'Method not allowed' });
 
   const auth = await checkAdmin(event);
-  if (!auth.ok) return authFailure(auth);
+  if (!auth.ok) {
+    // Marked so the panel can tell "your admin key" from "the gallery key".
+    const r = authFailure(auth);
+    r.headers['X-Gallery-Proxy'] = 'auth';
+    return r;
+  }
 
   const api = galleryApi();
   const key = String(process.env.GALLERY_KEY || '').trim();
