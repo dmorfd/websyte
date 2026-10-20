@@ -15,7 +15,7 @@
 const { checkAdmin, authFailure } = require('./lib/admin-auth');
 
 const MAX_BODY = 1024 * 1024;
-const TIMEOUT_MS = 10000;
+const TIMEOUT_MS = 8000;   // under Netlify's 10 s function limit, so the 504 can fire
 
 const json = (statusCode, body) => ({
   statusCode,

@@ -116,7 +116,7 @@ the site belongs to while they run:
 
 | What | Where it comes from |
 |---|---|
-| Discord avatar, name, Nitro name effect, guild tag, status, Spotify, "Add on Discord" link | Lanyard, for the user in the `DISCORD_USER_ID` env var |
+| Discord avatar, name, Nitro name effect, guild tag, status, Spotify, "Add on Discord" link | Lanyard, for the user in the `SITE_OWNER_DISCORD_ID` env var (or the older `DISCORD_USER_ID`) |
 | Name on the hero card and the tab title | Admin → Content Editor → A Identity → Display handle. **Leave it blank to use the Discord display name.** |
 | Avatar initials (only shown if no picture loads) | The name above |
 | Song, artist, cover | Admin → Content Editor → D Audio |
@@ -202,9 +202,15 @@ Only two things in `index.html` are still typed in by hand, both optional:
 1. The friend joins the Lanyard server (`discord.gg/lanyard`). Live status, the
    avatar and Spotify all come from Lanyard.
 2. Settings → Advanced → Developer Mode → right-click their profile → Copy User
-   ID → Netlify env `DISCORD_USER_ID`. That's the only place it goes.
+   ID → Netlify env `SITE_OWNER_DISCORD_ID` (an existing `DISCORD_USER_ID`
+   still works). That's the only place it goes on this site. arandomperson.dev
+   also needs it for the shared gallery's roster, with the origin
+   `https://dmorfd.netlify.app` and the panel URL
+   `https://dmorfd.netlify.app/admin.html#gallery`.
 3. Developer Portal → New Application → Bot → Reset Token → Netlify env
-   `DISCORD_BOT_TOKEN`.
+   `DISCORD_BOT_TOKEN`. Optional once `GALLERY_API` is set: the live banner
+   then comes from the shared gallery. The guild preview still needs it
+   unless the server widget is enabled.
    - The banner endpoint needs no server invite.
    - For the guild-tag preview, the bot must be **in the friend's tag
      server**. Otherwise it falls back to the server widget, if that's enabled.
@@ -218,7 +224,8 @@ Only two things in `index.html` are still typed in by hand, both optional:
 2. Site configuration → Site details → **Site ID** → `NETLIFY_SITE_ID`.
    User settings → Applications → Personal access tokens → New token (no
    expiry) → `NETLIFY_BLOBS_TOKEN`.
-3. Add all seven env vars from §2.
+3. Add the env vars from §2 (`DISCORD_USER_ID` only if
+   `SITE_OWNER_DISCORD_ID` isn't set).
 4. Domain management → add the custom domain (HTTPS is automatic). Add the
    same domain to the Turnstile widget's hostnames.
 5. Deploys → Trigger deploy. Env var changes only take effect after a deploy.
@@ -389,7 +396,7 @@ stored analytics event.
     `publish = "public"`.
   - Or add a `_redirects` file with
     `/netlify/*  /404  404!` and `/SETUP.md  /404  404!`.
-  - Both mean adding a file beyond the 27, which is why it isn't done here.
+  - Both mean adding a file beyond the 29, which is why it isn't done here.
 - **`external_node_modules = ["@netlify/blobs"]`** ships the whole package with
   each function, so each function zip is a few MB. That's well under Netlify's
   limits; it only makes deploys slightly slower. Removing the line makes

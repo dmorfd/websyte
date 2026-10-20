@@ -200,7 +200,7 @@ function normalizeSchedule(v) {
 }
 
 const discordUserId = () => {
-  const id = String(process.env.SITE_OWNER_DISCORD_ID || process.env.DISCORD_USER_ID || '').trim();
+  const id = [process.env.SITE_OWNER_DISCORD_ID, process.env.DISCORD_USER_ID].map((v) => String(v || '').trim()).find(Boolean) || '';
   return /^\d{15,25}$/.test(id) ? id : '';
 };
 

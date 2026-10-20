@@ -430,7 +430,7 @@
   </nav>
 </aside>
 
-<header class="g-top"><span id="gTopHost"></span> <i>/</i> <em>gallery</em></header>
+<header class="g-top" id="gTop"> <i>/</i> <em>gallery</em></header>
 
 <section class="g-hero">
   <div class="g-eyebrow">写真館</div>
@@ -536,13 +536,14 @@ const GALLERY_API = 'https://arandomperson.dev/.netlify/functions';
 // This site's own name, from wherever it's being served.
 const SITE_HOST = location.hostname.replace(/^www\./, '');
 (function initSiteName(){
+  // Separate pieces in the flex bar, spaced like "name . tld / gallery".
   const dot = SITE_HOST.indexOf('.');
-  const top = document.getElementById('gTopHost');
+  const top = document.getElementById('gTop');
   if (dot > 0) {
     const b = document.createElement('b'); b.textContent = '.';
-    top.append(SITE_HOST.slice(0, dot), b, SITE_HOST.slice(dot + 1));
+    top.prepend(SITE_HOST.slice(0, dot), b, SITE_HOST.slice(dot + 1));
   } else {
-    top.textContent = SITE_HOST;
+    top.prepend(SITE_HOST);
   }
   document.getElementById('navSideTitle').textContent = SITE_HOST;
   document.getElementById('gFoot').textContent = '© ' + new Date().getFullYear() + ' ' + SITE_HOST;
@@ -1369,20 +1370,26 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
     .then((d) => {
       if (!d) return;
       if (d.theme && window.__applyNavTheme) window.__applyNavTheme(d.theme);
+      // Same rule as the main page: the admin's favicon, else /favicon.png.
       const fav = d.features && typeof d.features.faviconUrl === 'string' ? d.features.faviconUrl.trim() : '';
-      if (fav) document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => { l.removeAttribute('type'); l.href = fav; });
+      const favHref = fav || '/favicon.png';
+      document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
+        if (l.getAttribute('href') !== favHref) { l.removeAttribute('type'); l.setAttribute('href', favHref); }
+      });
+      try { if (fav) localStorage.setItem('faviconCache', fav); else localStorage.removeItem('faviconCache'); } catch (e) {}
       if (typeof d.discordUserId === 'string' && /^\d{15,25}$/.test(d.discordUserId)) syncNavAvatar(d.discordUserId);
     })
     .catch(() => {});
-  // The drawer's mark is this site owner's Discord avatar, live from Lanyard
-  // (the main page caches the same URL, which the drawer shows meanwhile).
+  // The drawer's mark is this site owner's Discord avatar, live from Lanyard.
+  // Same ?size=256 URL the main page builds and caches, so neither page
+  // re-downloads it or rewrites the other's cache.
   function syncNavAvatar(id){
     fetch('https://api.lanyard.rest/v1/users/' + id)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         const u = j && j.success && j.data && j.data.discord_user;
         if (!u || !u.avatar) return;
-        const url = 'https://cdn.discordapp.com/avatars/' + id + '/' + u.avatar + '.' + (u.avatar.startsWith('a_') ? 'gif' : 'png') + '?size=128';
+        const url = 'https://cdn.discordapp.com/avatars/' + id + '/' + u.avatar + '.' + (u.avatar.startsWith('a_') ? 'gif' : 'png') + '?size=256';
         const mark = document.getElementById('navSideAvatar');
         if (mark && mark.src !== url) mark.src = url;
         try { localStorage.setItem('avatarUrlCache', url); } catch (e) {}

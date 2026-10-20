@@ -356,6 +356,7 @@
   /* Gallery page: one row per photo, thumbnail left. */
   select.input{appearance:auto;cursor:pointer;}
   select.input option{background:#140d12;color:var(--ink);}
+  .g-fieldset{border:0;padding:0;margin:0;min-width:0;}
   .g-photo{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;padding:12px;border-radius:12px;border:1px solid var(--line-2);background:rgba(255,255,255,0.02);}
   .g-photo-thumb{display:block;aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:rgba(255,255,255,0.04);}
   .g-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
@@ -2028,9 +2029,8 @@ function galleryError(r) {
   if (r.status === 403 && /not-yours/.test(code)) return "That photo belongs to the other owner — only your own photos are yours to change.";
   if (r.status === 409 && /section-in-use/.test(code)) return "That section still holds arandomperson.dev's photos, so it can't be removed. Ask them to move those first.";
   if (r.status === 409 && /has-photos/.test(code)) return "That still has photos in it — deal with the photos first.";
-  if (r.status === 409 && d.scope === "images") return "A photo of yours arrived while you were editing. Press Reset to load it, then make your change again.";
-  if (r.status === 409 && d.scope === "sections") return "The section list changed on the gallery. Press Reset to load it, then make your change again.";
-  if (r.status === 409) return "The gallery changed since it was loaded. Press Reset, then make your change again.";
+  if (r.status === 409 && (d.scope === "images" || d.scope === "sections")) return "Nothing was published: the gallery changed while you were editing. Your edits were kept on top of the latest version — check them, then press Publish again.";
+  if (r.status === 409) return "The gallery changed since it was loaded. Reset loads the latest (it discards unpublished edits).";
   return d.error || ("The gallery answered HTTP " + r.status + ".");
 }
 
@@ -2071,6 +2071,47 @@ const gEditable = (d) => {
   };
 };
 
+// The staged state in a comparable form: a field that was missing and one
+// that's now empty count as the same, and a photo's shown/hidden state is
+// compared as a yes/no whatever flag carries it — so undoing an edit by hand
+// clears the "unpublished changes" state.
+const G_FLAGS = ["published", "hidden", "draft", "status"];
+function gNormal(e, pub) {
+  return JSON.stringify({
+    title: e.title || "", intro: e.intro || "",
+    sections: e.sections.map((s) => ({ ...s, name: s.name || "", jp: s.jp || "" })),
+    images: e.images.map((im) => {
+      const x = { ...im, title: im.title || "", description: im.description || "", sectionId: im.sectionId || "", date: im.date || "" };
+      if (pub) { for (const k of G_FLAGS) delete x[k]; x.__shown = pub.on(im); }
+      return x;
+    }),
+  });
+}
+
+// After a 409: the fresh list, with the owner's staged changes re-applied on
+// top — field by field for photos, and the section list only if it was
+// edited. New arrivals are kept; photos that are gone are dropped.
+function gRebase(oldBase, oldEdit, fresh) {
+  const ob = gEditable(oldBase), nb = gEditable(fresh);
+  const byId = (a) => new Map(a.map((x) => [x.id, x]));
+  const diff = (o, e) => { const p = {}; for (const k of new Set([...Object.keys(o), ...Object.keys(e)])) if (JSON.stringify(o[k]) !== JSON.stringify(e[k])) p[k] = e[k]; return p; };
+  const obI = byId(ob.images), oeI = byId(oldEdit.images);
+  const images = nb.images.map((f) => { const o = obI.get(f.id), e = oeI.get(f.id); return o && e ? { ...f, ...diff(o, e) } : f; });
+  let sections = nb.sections;
+  if (JSON.stringify(ob.sections) !== JSON.stringify(oldEdit.sections)) {
+    const obS = byId(ob.sections), nbS = byId(nb.sections);
+    sections = oldEdit.sections
+      .filter((s) => !obS.has(s.id) || nbS.has(s.id))   // removed on the gallery meanwhile
+      .map((s) => { const o = obS.get(s.id), f = nbS.get(s.id); return f ? { ...f, ...diff(o || {}, s) } : s; });
+    for (const f of nb.sections) if (!obS.has(f.id) && !sections.some((s) => s.id === f.id)) sections.push(f);   // added meanwhile
+  }
+  return {
+    title: oldEdit.title !== ob.title ? oldEdit.title : nb.title,
+    intro: oldEdit.intro !== ob.intro ? oldEdit.intro : nb.intro,
+    sections, images,
+  };
+}
+
 function GalleryAdmin() {
   const [base, setBase] = useState(null);       // the last `list` reply
   const [edit, setEdit] = useState(null);       // staged {title, intro, sections, images}
@@ -2080,6 +2121,7 @@ function GalleryAdmin() {
   const [filter, setFilter] = useState("all");
   const [openCmts, setOpenCmts] = useState({});
   const [newSec, setNewSec] = useState({ name: "", jp: "" });
+  const [pubErr, setPubErr] = useState("");     // stays up until the next action
 
   const load = async () => {
     setLoadErr("");
@@ -2097,11 +2139,11 @@ function GalleryAdmin() {
   useEffect(() => { load(); }, []);
 
   const me = (base && base.me) || null;
-  const dirty = !!(base && edit) && JSON.stringify(edit) !== JSON.stringify(gEditable(base));
   const images = edit ? edit.images : [];
   const mine = images.filter((im) => gIsMine(im, me));
   const theirs = images.length - mine.length;
   const pub = gPublishModel(images);
+  const dirty = !!(base && edit) && gNormal(edit, pub) !== gNormal(gEditable(base), pub);
   const comments = (base && base.comments) || {};
   const likes = (base && base.likes) || {};
   const sectionIds = new Set(edit ? edit.sections.map((s) => s.id) : []);
@@ -2125,13 +2167,19 @@ function GalleryAdmin() {
   const addSec = () => {
     const name = newSec.name.trim();
     if (!name) { showStatus("give the section a name", "err"); return; }
-    setEdit((e) => ({ ...e, sections: [...e.sections, { id: gSectionId(name, new Set(e.sections.map((s) => s.id))), name, jp: newSec.jp.trim() }] }));
+    setEdit((e) => {
+      // Ids still referenced by any photo (a removed section's) are taken too,
+      // so a new section can't quietly adopt someone's orphaned photos.
+      const taken = new Set([...e.sections.map((s) => s.id), ...e.images.map((im) => im.sectionId).filter((v) => typeof v === "string" && v)]);
+      return { ...e, sections: [...e.sections, { id: gSectionId(name, taken), name, jp: newSec.jp.trim() }] };
+    });
     setNewSec({ name: "", jp: "" });
   };
 
   const publish = async () => {
-    if (!base || !edit) return;
+    if (!base || !edit) { showStatus("still connecting to the gallery", "err"); return; }
     for (const s of edit.sections) if (!String(s.name || "").trim()) { showStatus("every section needs a name", "err"); return; }
+    setPubErr("");
     setBusy(true);
     try {
       // Every photo goes back as listed: the gallery writes only this site's
@@ -2144,24 +2192,34 @@ function GalleryAdmin() {
         images: edit.images,
         baseRev: base.myRev, baseSectionsRev: base.sectionsRev,
       });
-      if (!r.ok) { showStatus(galleryError(r), "err"); setBusy(false); return; }
+      if (!r.ok) {
+        if (r.status === 409 && (r.data.scope === "images" || r.data.scope === "sections")) {
+          const fr = await galleryCall({ action: "list" });
+          if (fr.ok) { setEdit(gRebase(base, edit, fr.data)); setBase(fr.data); }
+        }
+        setPubErr(galleryError(r));
+        setBusy(false);
+        return;
+      }
       const ignored = Number(r.data.ignoredForeign) || 0;
-      await load();
-      showStatus(ignored > theirs ? `published ✓ — ${ignored - theirs} change(s) to the other owner's photos were ignored` : "published ✓");
+      if (!(await load())) showStatus("published, but couldn't refresh — press Reset", "err");
+      else showStatus(ignored > theirs ? `published ✓ — ${ignored - theirs} change(s) to the other owner's photos were ignored` : "published ✓");
     } catch (e) { showStatus(e.message || "publish failed", "err"); }
     setBusy(false);
   };
-  const reset = async () => { setBusy(true); if (await load()) showStatus("reloaded from the gallery"); setBusy(false); };
+  const reset = async () => { setPubErr(""); setBusy(true); if (await load()) showStatus("reloaded from the gallery"); setBusy(false); };
 
   // Removals act at once on the gallery, so staged edits must not be pending.
   const act = async (body, confirmText, done) => {
     if (dirty) { showStatus("publish or reset your changes first", "err"); return; }
     if (!confirm(confirmText)) return;
+    setPubErr("");
     setBusy(true);
     try {
       const r = await galleryCall(body);
       if (!r.ok) showStatus(galleryError(r), "err");
-      else { await load(); showStatus(done); }
+      else if (!(await load())) showStatus("done, but couldn't refresh — press Reset", "err");
+      else showStatus(done);
     } catch (e) { showStatus(e.message || "failed", "err"); }
     setBusy(false);
   };
@@ -2171,14 +2229,20 @@ function GalleryAdmin() {
 
   return (
     <div className="sec-page">
-      <EditorHead title="Gallery" meta="Your photos in the gallery shared with arandomperson.dev." status={status} onReset={reset} onPublish={publish} busy={busy || !edit} />
+      <EditorHead title="Gallery" meta="Your photos in the gallery shared with arandomperson.dev." status={status} onReset={reset} onPublish={publish} busy={busy} />
+      {pubErr ? <div className="glass" style={{ marginBottom: 14, fontSize: 12.5, color: "#ff9aa8", lineHeight: 1.6 }}>{pubErr}</div> : null}
 
       <div className="glass" style={{ marginBottom: 14 }}>
         <div className="grp-head" style={{ justifyContent: "space-between" }}>
           <span className="grp-title">Connection</span>
           <a className="btn btn-tiny" href="/gallery" target="_blank" rel="noopener">View the gallery ↗</a>
         </div>
-        {loadErr ? <div style={{ fontSize: 12, color: "#ff9aa8", lineHeight: 1.6 }}>{loadErr}</div>
+        {loadErr ? (
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, color: "#ff9aa8", lineHeight: 1.6, flex: "1 1 260px" }}>{loadErr}</div>
+              <button className="btn btn-tiny" disabled={busy} onClick={reset}>Retry</button>
+            </div>
+          )
           : !base ? <div className="field-sub">connecting to the gallery…</div>
           : (
             <div className="ctl-stack" style={{ gap: 6 }}>
@@ -2192,6 +2256,7 @@ function GalleryAdmin() {
           )}
       </div>
 
+      <fieldset disabled={busy} className="g-fieldset">
       {edit && (
         <div className="sec-grid" style={{ marginBottom: 14 }}>
           <div className="glass">
@@ -2251,7 +2316,7 @@ function GalleryAdmin() {
               const noSection = !sectionIds.has(im.sectionId);
               return (
                 <div key={im.id} className="g-photo">
-                  <a href={im.url} target="_blank" rel="noopener" className="g-photo-thumb">{im.url ? <img src={im.url} alt="" loading="lazy" /> : null}</a>
+                  <a href={/^https?:\/\//i.test(im.url || "") ? im.url : undefined} target="_blank" rel="noopener noreferrer" className="g-photo-thumb">{/^https?:\/\//i.test(im.url || "") ? <img src={im.url} alt="" loading="lazy" /> : null}</a>
                   <div className="ctl-stack" style={{ gap: 8, minWidth: 0 }}>
                     <input className="input" value={im.title || ""} maxLength={120} placeholder="title" onChange={(e) => setImg(im.id, (x) => ({ ...x, title: e.target.value }))} aria-label="Photo title" />
                     <textarea className="textarea" style={{ minHeight: 54 }} value={im.description || ""} maxLength={1000} placeholder="description (optional)" onChange={(e) => setImg(im.id, (x) => ({ ...x, description: e.target.value }))} aria-label="Photo description" />
@@ -2263,7 +2328,7 @@ function GalleryAdmin() {
                       <input className="input" style={{ width: 130, flex: "0 0 auto" }} value={im.date || ""} maxLength={40} placeholder="YYYY-MM-DD" onChange={(e) => setImg(im.id, (x) => ({ ...x, date: e.target.value }))} aria-label="Photo date" />
                       {pub ? (
                         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--ink-2)" }}>
-                          <div className={"switch " + (pub.on(im) ? "on" : "")} onClick={() => setImg(im.id, (x) => pub.set(x, !pub.on(x)))} role="switch" aria-checked={pub.on(im)} aria-label="Published"><div className="knob" /></div>
+                          <div className={"switch " + (pub.on(im) ? "on" : "")} onClick={() => { if (!busy) setImg(im.id, (x) => pub.set(x, !pub.on(x))); }} role="switch" aria-checked={pub.on(im)} aria-label="Published"><div className="knob" /></div>
                           {pub.on(im) ? "published" : "hidden"}
                         </label>
                       ) : null}
@@ -2297,6 +2362,7 @@ function GalleryAdmin() {
           </div>
         </div>
       )}
+      </fieldset>
     </div>
   );
 }
