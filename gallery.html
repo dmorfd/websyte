@@ -1335,6 +1335,9 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setStatus(d.error || 'could not post that', 'err'); lbSend.disabled = false; return; }
       setStatus('posted ✓', 'ok');
+      // Tell THIS site to look for it now, so the photo's owner here gets it
+      // in Discord straight away (same-origin, no data, rate-limited).
+      fetch('/.netlify/functions/gallery-comment-check', { method: 'POST' }).catch(() => {});
       lbBody.value = '';
       try {
         localStorage.setItem(NAME_KEY, username);

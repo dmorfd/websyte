@@ -29,7 +29,7 @@ This copy keeps the following.
 
 ---
 
-## 1. Files (32)
+## 1. Files (33)
 
 | # | File | Why it's here |
 |---|---|---|
@@ -60,9 +60,10 @@ This copy keeps the following.
 | 27 | `gallery.html` | The shared gallery's page (from arandomperson.dev), at `/gallery` and `/gallery.html`. See "Shared gallery" in §6 |
 | 28 | `netlify/functions/gallery-proxy.js` | Admin → Gallery's calls to the shared gallery, with `GALLERY_KEY` attached on the server |
 | 29 | `netlify/functions/gallery-notify.js` | Admin → Gallery → Comment notifications: save / test this site's Discord webhook |
-| 30 | `netlify/functions/gallery-comment-notify.js` | Scheduled every 5 minutes (`netlify.toml`): posts new comments on this site's photos to that webhook |
-| 31 | `netlify/functions/lib/gallery-notify.js` | Shared by the two above |
-| 32 | `SETUP.md` | This file |
+| 30 | `netlify/functions/gallery-comment-notify.js` | Scheduled every minute (`netlify.toml`): posts new comments on this site's photos to that webhook |
+| 31 | `netlify/functions/gallery-comment-check.js` | Same check, run at once when a visitor comments on this site's `/gallery` (same-site only, rate-limited) |
+| 32 | `netlify/functions/lib/gallery-notify.js` | Shared by the three above |
+| 33 | `SETUP.md` | This file |
 
 The 6 binary assets (rows 21–26) aren't in the repo. Copy them from your site
 into the repo root next to `index.html`.
@@ -263,10 +264,11 @@ runs the Discord bot. This site is a client of it.
   shared setting**: publishing it changes `/gallery` on arandomperson.dev too,
   and their changes show up here — last write wins.
 - **Comment notifications: Admin → Gallery → Comment notifications.** Paste a
-  Discord webhook URL there (Save, then Send test). Every 5 minutes the
-  scheduled function `gallery-comment-notify` asks the shared gallery for new
-  comments on **this site's** photos and posts them to that webhook, whichever
-  site they were written on. The webhook is stored on this site only (masked
+  Discord webhook URL there (Save, then Send test). Comments written on this
+  site's `/gallery` arrive at once (the page asks `gallery-comment-check` to
+  look straight away); comments written on arandomperson.dev arrive within a
+  minute, from the scheduled `gallery-comment-notify`. Both only post new
+  comments on **this site's** photos. The webhook is stored on this site only (masked
   in the panel) and never sent to arandomperson.dev. Leave his webhook blank in
   arandomperson.dev's Gallery Owners panel, or he'd get each comment twice.
 - **UI Editor → Sidebar** colours this site's navigation drawer (the ☰ on the home page and on `/gallery`) only (panel,
@@ -410,7 +412,7 @@ stored analytics event.
     `publish = "public"`.
   - Or add a `_redirects` file with
     `/netlify/*  /404  404!` and `/SETUP.md  /404  404!`.
-  - Both mean adding a file beyond the 32, which is why it isn't done here.
+  - Both mean adding a file beyond the 33, which is why it isn't done here.
 - **`external_node_modules = ["@netlify/blobs"]`** ships the whole package with
   each function, so each function zip is a few MB. That's well under Netlify's
   limits; it only makes deploys slightly slower. Removing the line makes

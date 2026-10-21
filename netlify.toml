@@ -24,4 +24,4 @@
 # Posts new comments on this site's gallery photos to its own Discord webhook
 # (Admin → Gallery → Comment notifications).
 [functions."gallery-comment-notify"]
-  schedule = "*/5 * * * *"
+  schedule = "* * * * *"
