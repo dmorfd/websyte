@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" style="background:#000">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -18,6 +18,16 @@
       // This site's favicon (Admin → Settings), as cached by the main page.
       var __fav = localStorage.getItem('faviconCache');
       if (__fav) document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(function (l) { l.removeAttribute('type'); l.href = __fav; });
+
+      // The gallery title's own font file, as last seen, so the loading
+      // screen's title is in it from the first frame instead of swapping in.
+      var __tf = JSON.parse(localStorage.getItem('galleryTitleFontCache') || 'null');
+      if (__tf && __tf.fam && /^https?:\/\//.test(__tf.url || '')) {
+        var __st = document.createElement('style'); __st.id = 'galFontFace';
+        __st.textContent = '@font-face{font-family:"' + __tf.fam + '";src:url("' + __tf.url.replace(/"/g, '%22') + '")' + (__tf.fmt ? ' format("' + __tf.fmt + '")' : '') + ';font-display:block;font-weight:100 900;}';
+        document.head.appendChild(__st);
+        document.documentElement.style.setProperty('--g-title-font', '"' + __tf.fam + '",\'Noto Serif JP\',serif');
+      }
 
       // Replay the last-seen theme as inline styles on <html>. Inline styles
       // outrank the stylesheet whatever the document order, so no ordering
@@ -222,8 +232,8 @@
 
     /* ── LOADER ── */
     .g-loader{
-      position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
-      background:var(--g-bg2);
+      position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
+      background:#000;
       transition:opacity .85s cubic-bezier(.4,0,.2,1), visibility 0s linear .85s;
     }
     .g-loader.done{opacity:0;visibility:hidden;}
@@ -232,6 +242,10 @@
     .g-loader.done .g-loader-in{transform:translateY(-12px);opacity:0;transition:transform .85s cubic-bezier(.4,0,.2,1), opacity .5s ease;}
     .g-loader-in{transition:transform .85s cubic-bezier(.4,0,.2,1), opacity .5s ease;}
     .g-loader-in{display:flex;flex-direction:column;align-items:center;gap:14px;width:min(280px,80vw);}
+    /* Hidden until its fonts are ready, so the text never shows in a fallback
+       face first; a short fade once they are. */
+    .g-loader:not(.done) .g-loader-in{opacity:0;}
+    .g-loader:not(.done) .g-loader-in.fonts-ready{opacity:1;transition:opacity .35s ease;}
     .g-loader-jp{font-family:'Noto Serif JP',serif;font-weight:600;font-size:20px;letter-spacing:.3em;color:var(--g-accent1);}
     .g-loader-t{font-family:var(--g-title-font);font-weight:900;font-size:36px;line-height:1;color:var(--g-text);text-align:center;}
     .g-loader-track{width:100%;height:2px;margin-top:16px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;}
@@ -526,6 +540,22 @@
 </div>
 
 <script>
+// ════ LOADING SCREEN: text only once its fonts are in ════
+(function(){
+  const inner = document.querySelector('.g-loader-in');
+  const title = document.getElementById('gLoaderTitle');
+  try { const h = localStorage.getItem('galleryHeadingCache'); if (h) title.textContent = h; } catch (e) {}
+  const show = () => inner.classList.add('fonts-ready');
+  if (!document.fonts || !document.fonts.load) { show(); return; }
+  const fam = getComputedStyle(document.documentElement).getPropertyValue('--g-title-font').trim() || "'Noto Serif JP',serif";
+  const wait = Promise.all([
+    document.fonts.load("600 20px 'Noto Serif JP'", '写真館'),
+    document.fonts.load('900 36px ' + fam, title.textContent || 'Gallery'),
+    document.fonts.load("12px 'Share Tech Mono'", 'Loading 0123456789%'),
+  ]).catch(() => {});
+  Promise.race([wait, new Promise((r) => setTimeout(r, 2500))]).then(show);
+})();
+
 // ════ THE SHARED GALLERY ════
 // The photos, comments and likes live on arandomperson.dev, which owns the
 // data. Visitors' browsers call it directly (cross-origin, no key): its rate
@@ -593,7 +623,9 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
         + 'src:url("' + t.fontUrl.replace(/"/g, '%22') + '")' + (fmt ? ' format("' + fmt + '")' : '') + ';'
         + 'font-display:swap;font-weight:100 900;}';
       set('--g-title-font', '"' + fam + '",' + FALLBACK);
+      try { localStorage.setItem('galleryTitleFontCache', JSON.stringify({ fam: fam, url: t.fontUrl, fmt: fmt || '' })); } catch (e) {}
     } else {
+      try { localStorage.removeItem('galleryTitleFontCache'); } catch (e) {}
       const tag = document.getElementById('galFontFace');
       if (tag) tag.textContent = '';
       set('--g-title-font', FALLBACK);
@@ -1131,6 +1163,7 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
     const heading = (catalogue.config && catalogue.config.title && catalogue.config.title.text) || catalogue.title || 'Gallery';
     titleEl.textContent = heading;
     loaderTitle.textContent = heading;
+    try { localStorage.setItem('galleryHeadingCache', heading); } catch (e) {}
     document.title = heading + ' · ' + SITE_HOST;
     descEl.textContent = (catalogue.config && catalogue.config.description) || catalogue.intro || '';
 
