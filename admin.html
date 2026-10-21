@@ -2393,7 +2393,9 @@ function galCfg(c) {
   return {
     ...x,
     theme: typeof x.theme === "string" ? x.theme : "none",
-    title: { ...t, text: t.text || "", fontUrl: t.fontUrl || "", fontName: t.fontName || "", ...pair(t, "#d7263d", "#e3b04b"), angle: typeof t.angle === "number" ? t.angle : 135 },
+    title: { ...t, text: t.text || "", fontUrl: t.fontUrl || "", fontName: t.fontName || "", ...pair(t, "#d7263d", "#e3b04b"), angle: typeof t.angle === "number" ? t.angle : 135, blur: typeof t.blur === "number" ? t.blur : 0 },
+    tileGlow: isHex(x.tileGlow) ? x.tileGlow : "",
+    music: (() => { const m = o(x.music); return { ...m, enabled: m.enabled === true, showCover: m.showCover !== false, coverUrl: m.coverUrl || "", volume: typeof m.volume === "number" ? m.volume : 60, tracks: Array.isArray(m.tracks) ? m.tracks.filter((t) => t && typeof t === "object") : [] }; })(),
     description: typeof x.description === "string" ? x.description : "",
     density: x.density === "compact" ? "compact" : "comfortable",
     tileGlass: x.tileGlass !== false,
@@ -2525,6 +2527,16 @@ function GalleryEditor() {
               <input className="slider" type="range" min="0" max="360" step="5" value={cfg.title.angle}
                 onChange={(e) => upIn("title", { angle: +e.target.value })} />
             </div>
+            <div>
+              <div className="sld-head"><span>Glow</span><span className="sld-val">{cfg.title.blur ? cfg.title.blur + "px" : "off"}</span></div>
+              <input className="slider" type="range" min="0" max="40" step="1" value={cfg.title.blur || 0}
+                onChange={(e) => upIn("title", { blur: +e.target.value })} />
+              <div className="field-sub">
+                A blurred copy of the heading in its own colours, sitting behind it. Off at 0.
+                It follows the letterforms rather than painting a block behind them, and it is
+                skipped for visitors who ask for reduced motion.
+              </div>
+            </div>
             <div className="field-sub">The angle applies whichever colours are in force, preset or not.</div>
           </div>
         </div>
@@ -2574,6 +2586,20 @@ function GalleryEditor() {
               c1={cfg.bg.c1} c2={cfg.bg.c2}
               onC1={(v) => up({ bg: Object.assign({}, cfg.bg, { c1: v }) })}
               onC2={(v) => up({ bg: Object.assign({}, cfg.bg, { c2: v }) })} />
+            <div>
+              <div className="lbl">Glow under a photo <span className="field-sub">when you hover one</span></div>
+              <div className="color-row">
+                <input type="color" className="swatch" value={cfg.tileGlow || "#d7263d"}
+                  onChange={(e) => up({ tileGlow: e.target.value })} />
+                <input className="input" value={cfg.tileGlow} maxLength={7} placeholder="follows the title accent"
+                  onChange={(e) => up({ tileGlow: e.target.value })} />
+                {cfg.tileGlow && <button className="btn btn-tiny" onClick={() => up({ tileGlow: "" })}>clear</button>}
+              </div>
+              <div className="field-sub">
+                Blank follows the title's first accent, which is what it did before this was
+                adjustable — so leaving it empty is not the same as picking that colour by hand.
+              </div>
+            </div>
             <div className="ctl-row">
               <span>Video background</span>
               <div className={"switch " + (cfg.video.enabled ? "on" : "")} role="switch" aria-checked={cfg.video.enabled}
@@ -2614,6 +2640,75 @@ function GalleryEditor() {
             </div>
             <div className="field-sub">
               With a video on, the title gets a soft blurred plate behind it so it stays legible.
+            </div>
+          </div>
+        </div>
+
+        {/* ── MUSIC ── */}
+        <div className="glass">
+          <div className="grp-head" style={{ justifyContent: "space-between" }}>
+            <span className="grp-title">Sound player</span>
+            <span className="field-sub">under the gallery's name</span>
+          </div>
+          <div className="ctl-stack">
+            <div className="ctl-row">
+              <span>Show the player <span className="field-sub">four tracks, looping</span></span>
+              <div className={"switch " + (cfg.music.enabled ? "on" : "")} role="switch" aria-checked={cfg.music.enabled}
+                onClick={() => upIn("music", { enabled: !cfg.music.enabled })}><div className="knob" /></div>
+            </div>
+            <div style={{ opacity: cfg.music.enabled ? 1 : 0.45, pointerEvents: cfg.music.enabled ? "auto" : "none" }}>
+              <div className="ctl-stack">
+                <div className="ctl-row">
+                  <span>Cover image</span>
+                  <div className={"switch " + (cfg.music.showCover ? "on" : "")} role="switch" aria-checked={cfg.music.showCover}
+                    onClick={() => upIn("music", { showCover: !cfg.music.showCover })}><div className="knob" /></div>
+                </div>
+                <div style={{ opacity: cfg.music.showCover ? 1 : 0.45 }}>
+                  <div className="lbl">Cover URL</div>
+                  <input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}
+                    value={cfg.music.coverUrl} maxLength={500} placeholder="https://…r2.dev/cover.jpg"
+                    onChange={(e) => upIn("music", { coverUrl: e.target.value })} />
+                </div>
+                <div>
+                  <div className="sld-head"><span>Volume</span><span className="sld-val">{cfg.music.volume}%</span></div>
+                  <input className="slider" type="range" min="0" max="100" step="5" value={cfg.music.volume}
+                    onChange={(e) => upIn("music", { volume: +e.target.value })} />
+                  <div className="field-sub">Where it starts. Nothing plays until a visitor presses play.</div>
+                </div>
+                {/* Four fixed rows rather than add/remove: the strip is sized
+                    for four, and a row left blank simply isn't a track. */}
+                {[0, 1, 2, 3].map((i) => {
+                  const list = Array.isArray(cfg.music.tracks) ? cfg.music.tracks : [];
+                  const t = Object.assign({ title: "", artist: "", url: "" }, list[i] || {});
+                  const setTrack = (patch) => {
+                    const next = [0, 1, 2, 3].map((j) => Object.assign({ title: "", artist: "", url: "" }, list[j] || {}));
+                    next[i] = Object.assign({}, next[i], patch);
+                    // Only rows with a URL are real; the rest are empty slots.
+                    upIn("music", { tracks: next.filter((x) => String(x.url || "").trim()) });
+                  };
+                  return (
+                    <div key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? 10 : 0 }}>
+                      <div className="lbl">Track {i + 1}{!t.url && <span className="field-sub"> empty</span>}</div>
+                      <div className="ctl-stack">
+                        <div className="rep-row">
+                          <input className="input" value={t.title} maxLength={80} placeholder="Title"
+                            onChange={(e) => setTrack({ title: e.target.value })} />
+                          <input className="input" value={t.artist} maxLength={80} placeholder="Artist"
+                            onChange={(e) => setTrack({ artist: e.target.value })} />
+                        </div>
+                        <input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}
+                          value={t.url} maxLength={500} placeholder="https://…r2.dev/track.mp3"
+                          onChange={(e) => setTrack({ url: e.target.value })} />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="field-sub">
+                  Upload the audio to R2 and paste the public links. The player takes the
+                  gallery's own colours and glass, loops back to the first track after the
+                  last, and never starts on its own.
+                </div>
+              </div>
             </div>
           </div>
         </div>
