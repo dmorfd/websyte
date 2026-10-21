@@ -4,8 +4,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Gallery</title>
-  <link rel="icon" type="image/png" href="/favicon.png"/>
-  <link rel="apple-touch-icon" href="/favicon.png"/>
+  <link rel="icon" type="image/png" href="/favicon.png?v=3"/>
+  <link rel="apple-touch-icon" href="/favicon.png?v=3"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <!-- The shared gallery lives on arandomperson.dev: its API and its photos. -->
@@ -1408,9 +1408,10 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
       if (d.theme && window.__applyNavTheme) window.__applyNavTheme(d.theme);
       // Same rule as the main page: the admin's favicon, else /favicon.png.
       const fav = d.features && typeof d.features.faviconUrl === 'string' ? d.features.faviconUrl.trim() : '';
-      const favHref = fav || '/favicon.png';
+      const favHref = fav || '/favicon.png?v=3';
       document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
-        if (l.getAttribute('href') !== favHref) { l.removeAttribute('type'); l.setAttribute('href', favHref); }
+        if (l.getAttribute('href') === favHref) return;
+        const n = document.createElement('link'); n.rel = l.rel; n.href = favHref; l.replaceWith(n);
       });
       try { if (fav) localStorage.setItem('faviconCache', fav); else localStorage.removeItem('faviconCache'); } catch (e) {}
       if (typeof d.discordUserId === 'string' && /^\d{15,25}$/.test(d.discordUserId)) syncNavAvatar(d.discordUserId);

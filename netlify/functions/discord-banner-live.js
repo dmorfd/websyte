@@ -9,7 +9,36 @@
 // {reason:'no-token'} and the public site stops polling.
 // Replies are CDN-cached for two minutes so visitor traffic never reaches
 // Discord's rate limits.
+const { getStore } = require('@netlify/blobs');
 const { DISCORD_USER_AGENT: USER_AGENT } = require('./bot-filter');
+
+// The last good answer, kept so a passing Discord hiccup (timeout, 429, 5xx)
+// still serves the banner instead of an error and an empty banner.
+const LAST_KEY = 'banner-live-last';
+const lastStore = () => getStore({ name: 'site-content', siteID: process.env.NETLIFY_SITE_ID, token: process.env.NETLIFY_BLOBS_TOKEN });
+async function remember(body, userId) {
+  try {
+    const s = lastStore();
+    const cur = await s.get(LAST_KEY, { type: 'json' });
+    if (!cur || cur.userId !== userId || JSON.stringify(cur.body) !== JSON.stringify(body)) await s.setJSON(LAST_KEY, { userId, body, at: Date.now() });
+  } catch (err) { console.error('[discord-banner-live] could not store last banner —', err && err.message); }
+}
+async function lastGood(failure, userId) {
+  try {
+    const rec = await lastStore().get(LAST_KEY, { type: 'json' });
+    if (rec && rec.userId === userId && rec.body && rec.body.ok === true) return json(200, { ...rec.body, stale: true }, CACHED(60));
+  } catch {}
+  return failure;
+}
+// Success → remember it; failure (5xx) → the last good one if there is one.
+async function settle(res, userId) {
+  if (res.statusCode === 200) {
+    const b = JSON.parse(res.body);
+    if (b.ok === true) await remember(b, userId);
+    return res;
+  }
+  return res.statusCode >= 502 ? lastGood(res, userId) : res;
+}
 
 const json = (statusCode, body, headers) => ({
   statusCode,
@@ -84,7 +113,11 @@ exports.handler = async (event) => {
     console.error('[discord-banner-live] SITE_OWNER_DISCORD_ID / DISCORD_USER_ID is not a numeric Discord ID');
     return json(500, { ok: false, reason: 'bad-user-id' });
   }
-  if (!token) return viaGallery(userId);
+  if (!token) return settle(await viaGallery(userId), userId);
+  return settle(await viaBot(token, userId), userId);
+};
+
+async function viaBot(token, userId) {
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 8000);
@@ -126,4 +159,4 @@ exports.handler = async (event) => {
   } finally {
     clearTimeout(timer);
   }
-};
+}
