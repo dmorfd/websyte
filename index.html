@@ -4,8 +4,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <title></title>
-  <link rel="icon" type="image/png" href="/favicon.png"/>
-  <link rel="apple-touch-icon" href="/favicon.png"/>
+  <link rel="icon" type="image/png" href="/favicon.png?v=3"/>
+  <link rel="apple-touch-icon" href="/favicon.png?v=3"/>
   <!-- Warm up TLS/DNS to the hosts we fetch fonts, avatar/banner, media and presence from -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -109,6 +109,7 @@
       }
       // Favicon set in the admin (Settings → Public Site Features).
       var __fav = localStorage.getItem('faviconCache');
+      if (__fav === '/favicon.png') { localStorage.removeItem('faviconCache'); __fav = null; }
       if (__fav) document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(function (l) { l.removeAttribute('type'); l.href = __fav; });
       // Audio source cache — if last visit was in 'video' mode, hide the
       // soundbar on first paint via a CSS rule so it doesn't flash visible.
@@ -2973,6 +2974,7 @@ function applyDiscordBanner(banner) {
            : (typeof obj.posX === 'number') ? (50 - obj.posX) / 100 : 0;
   let offY = (typeof obj.offsetY === 'number') ? obj.offsetY
            : (typeof obj.posY === 'number') ? (50 - obj.posY) / 100 : 0;
+  if (img.dataset.base !== url) { delete img.dataset.retried; img.dataset.base = url; }
   img.src = url;
   // The img fills the box (object-fit:cover, width/height:100% via CSS), so
   // translate percentages are relative to the box → identical framing in the
@@ -2983,7 +2985,17 @@ function applyDiscordBanner(banner) {
     'rotate(' + rot + 'deg) scale(' + scale + ')';
   bannerEl.style.background = '';   // let the image show (clear any accent gradient)
   bannerEl.classList.add('has-image');
-  img.onerror = () => { bannerEl.classList.remove('has-image'); refreshBannerGradient(); };
+  // A failed image load gets one retry (cache-busted) before falling back to
+  // the gradient; without it a single dropped request hid the banner for good.
+  img.onerror = () => {
+    if (!img.dataset.retried) {
+      img.dataset.retried = '1';
+      setTimeout(() => { img.src = url + (url.includes('?') ? '&' : '?') + 'r=' + Date.now(); }, 3000);
+      return;
+    }
+    bannerEl.classList.remove('has-image'); refreshBannerGradient();
+  };
+  img.onload = () => { delete img.dataset.retried; };
 }
 
 // Empty-banner background: a gradient tinted either by the live Discord accent
@@ -3039,11 +3051,27 @@ function setAvatarDecoration(url) {
 // which needs DISCORD_BOT_TOKEN). When a live banner exists it overrides the
 // manual one, shown full-bleed/centered; otherwise the manual banner stays.
 let __bannerSyncTimer = null;
+// The last live banner this browser saw: shown at once on the next visit,
+// before (and in case of) a slow or failed check.
+let __bannerRetries = 0;
 async function syncDiscordBanner() {
+  if (!window.__bannerShownFromCache) {
+    window.__bannerShownFromCache = true;
+    try {
+      const cachedBanner = localStorage.getItem('discordBannerCache');
+      if (cachedBanner && window.__bannerAutoSync && /^https:\/\/cdn\.discordapp\.com\/banners\//.test(cachedBanner)) applyDiscordBanner({ url: cachedBanner });
+    } catch (e) {}
+  }
+  let failed = false;
   try {
     const res = await fetch('/.netlify/functions/discord-banner-live', { cache: 'no-store' });
+    if (!res.ok) failed = true;
     if (res.ok) {
       const d = await res.json().catch(() => ({}));
+      if (d && d.ok === true) {
+        __bannerRetries = 0;
+        try { if (d.url) localStorage.setItem('discordBannerCache', d.url); else localStorage.removeItem('discordBannerCache'); } catch (e) {}
+      }
       if (d && typeof d.accentColor === 'number') window.__discordAccent = d.accentColor; // for the empty-banner gradient
       if (d && d.reason !== 'no-token') { window.__decoFromBot = true; setAvatarDecoration(d.avatarDecoration || null); } // bot is authoritative for the decoration
       if (d && d.displayNameStyles && typeof d.displayNameStyles === 'object') {
@@ -3063,7 +3091,10 @@ async function syncDiscordBanner() {
       // No token configured → nothing live to poll for; don't keep hitting it.
       if (d && d.reason === 'no-token') { if (__bannerSyncTimer) { clearInterval(__bannerSyncTimer); __bannerSyncTimer = null; } return; }
     }
-  } catch { /* network hiccup — leave the current banner in place */ }
+  } catch { failed = true; /* network hiccup — leave the current banner in place */ }
+  // A failed check retries soon (10 s, 30 s, 60 s) rather than waiting for
+  // the next 2.5-minute poll.
+  if (failed && __bannerRetries < 3) setTimeout(syncDiscordBanner, [10000, 30000, 60000][__bannerRetries++]);
   // Re-check periodically so a banner / accent change on Discord shows up on its own.
   if (!__bannerSyncTimer) {
     __bannerSyncTimer = setInterval(syncDiscordBanner, 150000); // every 2.5 min
@@ -4783,11 +4814,16 @@ function applyEnterScreen(es) {
 // Favicon from the admin (Settings → Public Site Features); blank = the site's
 // own /favicon.png. Cached so the next visit's first paint already uses it.
 function applyFavicon(url) {
-  const href = (typeof url === 'string' && url.trim()) ? url.trim() : '/favicon.png';
+  // ?v=3: browsers remembered /favicon.png as missing from before the file existed.
+  const href = (typeof url === 'string' && url.trim()) ? url.trim() : '/favicon.png?v=3';
+  // Swap in fresh <link>s: Chrome doesn't always notice an href edited in place.
   document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
-    if (l.getAttribute('href') !== href) { l.removeAttribute('type'); l.setAttribute('href', href); }
+    if (l.getAttribute('href') === href) return;
+    const n = document.createElement('link');
+    n.rel = l.rel; n.href = href;
+    l.replaceWith(n);
   });
-  try { if (href === '/favicon.png') localStorage.removeItem('faviconCache'); else localStorage.setItem('faviconCache', href); } catch (e) {}
+  try { if (href === '/favicon.png?v=3') localStorage.removeItem('faviconCache'); else localStorage.setItem('faviconCache', href); } catch (e) {}
 }
 
 // ════ HERO NAME AUTO-FIT ════

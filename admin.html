@@ -4,8 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Admin Panel</title>
-<link rel="icon" type="image/png" href="/favicon.png"/>
-<link rel="apple-touch-icon" href="/favicon.png"/>
+<link rel="icon" type="image/png" href="/favicon.png?v=3"/>
+<link rel="apple-touch-icon" href="/favicon.png?v=3"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -972,9 +972,13 @@ function useSiteIdentity() {
 }
 // The site favicon (Settings → Public Site Features), on the admin tab too.
 function applyAdminFavicon(url) {
-  const href = url || "/favicon.png";
+  const href = url || "/favicon.png?v=3";
+  // Swap in fresh <link>s: Chrome doesn't always notice an href edited in place.
   document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
-    if (l.getAttribute("href") !== href) { l.removeAttribute("type"); l.setAttribute("href", href); }
+    if (l.getAttribute('href') === href) return;
+    const n = document.createElement('link');
+    n.rel = l.rel; n.href = href;
+    l.replaceWith(n);
   });
 }
 loadSiteIdentity().then((v) => applyAdminFavicon(v.faviconUrl));
