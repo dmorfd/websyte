@@ -2515,9 +2515,10 @@ const GAL_DEFAULT_CONFIG = {
   density: "comfortable", tileGlass: true, likes: true, overlay: "none",
   bg: { c1: "#1a0f12", c2: "#0b090a" },
   tileGlow: "",
-  music: { enabled: false, showCover: true, coverUrl: "", volume: 60, c1: "", c2: "", accentFrom: "", accentTo: "", fontUrl: "", fontName: "", tint: "", tintStrength: 72, tracks: [] },
+  music: { enabled: false, showCover: true, coverUrl: "", volume: 60, c1: "", c2: "", accentFrom: "", accentTo: "", fontUrl: "", fontName: "", titleColor: "", tint: "", glass: 20, tintStrength: 82, autoplay: true, tracks: [] },
   video: { enabled: false, desktopUrl: "", mobileUrl: "", tint: "#000000", tintStrength: 45 },
-  accents: { title: { c1: "#d7263d", c2: "#e3b04b" }, date: { c1: "#d7263d", c2: "#e3b04b" }, comment: { c1: "#d7263d", c2: "#e3b04b" } },
+  accents: { title: { c1: "#d7263d", c2: "#e3b04b" }, date: { c1: "#d7263d", c2: "#e3b04b" }, comment: { c1: "#d7263d", c2: "#e3b04b" }, section: { c1: "", c2: "" } },
+  sectionLine: 100,
   preset: null,
 };
 function galWithDefaults(def, v) {
@@ -2618,6 +2619,36 @@ function GalleryEditor() {
   // swatch here never shows a colour the player is not going to use.
   const playerC1 = cfg.music.c1 || cfg.accents.title.c1;
   const playerC2 = cfg.music.c2 || cfg.accents.title.c2;
+  // The song title is a flat colour now, and blank follows the player's first
+  // — the same fallback the page makes, so the swatch never shows a colour the
+  // player is not going to use.
+  const titleColour = cfg.music.titleColor || playerC1;
+  // The rule beside each section's name. Read defensively because it arrived
+  // after the other three accents and a config cached from before it exists
+  // would otherwise take the whole screen down with a property read on
+  // undefined.
+  const secLine = cfg.accents.section || { c1: "", c2: "" };
+  const secLineC1 = secLine.c1 || "";
+  const secLineC2 = secLine.c2 || "";
+  const secLineAmt = typeof cfg.sectionLine === "number" ? cfg.sectionLine : 100;
+  // The exact gradient gallery.html builds — blank included, where it is not a
+  // gradient between two chosen colours at all but the flat white hairline the
+  // page has always drawn. Previewing a colour here that the page would not
+  // use is the one thing a live preview must not do.
+  const secLineImg = (secLineC1 || secLineC2)
+    ? "linear-gradient(90deg, " + (secLineC1 || secLineC2) + ", " + (secLineC2 || secLineC1) + " 60%, transparent)"
+    : "linear-gradient(90deg, rgba(255,255,255,.14), transparent)";
+  // ── THE PLAYER'S GLASS ──
+  // The same three lines as gallery.html and gallery-config.js, for the same
+  // reason: a preview that works the number out differently from the page is
+  // not a preview. 0-40, 20 standard, 0 nothing at all.
+  const GAL_GLASS_FULL = 20;
+  const galRamp = (std, max, g) => (g <= 1 ? std * g : std + (max - std) * Math.min(1, g - 1));
+  const musicGlass = typeof cfg.music.glass === "number" ? cfg.music.glass : 20;
+  const musicG = Math.min(2, Math.max(0, musicGlass) / GAL_GLASS_FULL);
+  const musicFillA = galRamp(0.82, 0.97, musicG);
+  const musicEdgeA = galRamp(0.10, 0.28, musicG);
+  const musicPanel = Math.min(1, musicG);
 
   return (
     <div className="sec-page sec-page-wide">
@@ -2948,7 +2979,7 @@ function GalleryEditor() {
                   <div className="sld-head"><span>Volume</span><span className="sld-val">{cfg.music.volume}%</span></div>
                   <input className="slider" type="range" min="0" max="100" step="5" value={cfg.music.volume}
                     onChange={(e) => upIn("music", { volume: +e.target.value })} />
-                  <div className="field-sub">Where it starts. Nothing plays until a visitor presses play.</div>
+                  <div className="field-sub">Where it starts, whether the visitor pressed play or the page did.</div>
                 </div>
 
                 {/* ── ITS OWN COLOURS ──
@@ -2980,10 +3011,10 @@ function GalleryEditor() {
                       : null}
                   </div>
                   <div className="field-sub">
-                    Colours the play disc, the ring around it, the song title and the
-                    progress bar. Left clear it follows the title accent below, which is not the same
-                    as picking those two colours by hand — change the accent later and the player
-                    follows it.
+                    Colours the play disc, the ring around it and the progress bar, and the song
+                    title follows the first of the two unless you give it one of its own below.
+                    Left clear it follows the title accent, which is not the same as picking those
+                    two colours by hand — change the accent later and the player follows it.
                   </div>
                 </div>
 
@@ -3043,19 +3074,75 @@ function GalleryEditor() {
                       : null}
                   </div>
                 </div>
+                {/* ── HOW MUCH GLASS ──
+                    Deliberately the SAME control as “Sound player glass” on
+                    the Appearance screen, down to the range and the wording:
+                    0-40, where 20 is the standard pane and the top half keeps
+                    going towards solid. The two players can be set to match by
+                    reading one number off the other.
+                    It replaced a 0-100 “panel opacity” that needed three
+                    separate patches before its own 0 meant anything. */}
                 <div>
                   <div className="sld-head">
-                    <span>Panel opacity</span>
-                    <span className="sld-val">{cfg.music.tintStrength ? cfg.music.tintStrength + "%" : "no panel"}</span>
+                    <span>Player glass</span>
+                    <span className="sld-val">{musicGlass === 0 ? "off — transparent"
+                      : musicGlass < 20 ? musicGlass + " · lighter"
+                      : musicGlass === 20 ? "20 · standard" : musicGlass + " · heavier"}</span>
                   </div>
-                  <input className="slider" type="range" min="0" max="100" step="1" value={cfg.music.tintStrength}
-                    onChange={(e) => upIn("music", { tintStrength: +e.target.value })} />
+                  <input className="slider" type="range" min="0" max="40" step="1" value={musicGlass}
+                    onChange={(e) => upIn("music", { glass: +e.target.value })} />
                   <div className="field-sub">
-                    How solid the glass is. The blur behind it stays all the way down, so even a
-                    sheer panel keeps the text on it readable — until <b>0</b>, where the panel
-                    goes entirely: no fill, no blur, no border, no corner marks and no top line,
-                    leaving the controls on the page with nothing behind them.
+                    The same slider the sound player on the main site uses, and the same numbers.
+                    It sets the blur behind the panel and how solid the pane is together,
+                    so <b>0</b> really is nothing: no fill, no blur, no border, no corner marks and
+                    no top line, leaving the controls on the page with nothing behind them.
                   </div>
+                  {/* The pane over a hard-edged pattern, because glass over a
+                      flat colour looks like a flat colour — there has to be
+                      something behind it for the blur and the alpha to do
+                      anything you can see. */}
+                  <div className="preview-box" style={{ marginTop: 10, padding: 0, overflow: "hidden" }}>
+                    <div style={{
+                      position: "relative", padding: "18px 16px",
+                      backgroundImage: "repeating-linear-gradient(135deg, var(--ink-3) 0 6px, transparent 6px 16px)",
+                    }}>
+                      <div style={{
+                        position: "relative", borderRadius: 6, padding: "12px 14px",
+                        background: "rgba(24,16,28," + musicFillA.toFixed(3) + ")",
+                        backdropFilter: musicGlass > 0 ? "blur(" + musicGlass + "px) saturate(1.25)" : "none",
+                        WebkitBackdropFilter: musicGlass > 0 ? "blur(" + musicGlass + "px) saturate(1.25)" : "none",
+                        border: "1px solid rgba(255,255,255," + musicEdgeA.toFixed(3) + ")",
+                        boxShadow: "0 14px 34px -16px rgba(0,0,0," + (0.62 * musicPanel).toFixed(3) + ")",
+                      }}>
+                        <div style={{
+                          position: "absolute", top: -1, left: 14, right: 14, height: 1,
+                          opacity: musicPanel,
+                          background: "linear-gradient(90deg, transparent, " + (cfg.music.accentFrom || playerC1)
+                            + " 30%, " + (cfg.music.accentTo || playerC2) + " 70%, transparent)",
+                        }} />
+                        <div style={{
+                          fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
+                          letterSpacing: ".2em", textTransform: "uppercase", color: "var(--ink-2)",
+                        }}>ready · 01 / 04</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── AUTOPLAY ── */}
+                <div className="ctl-row">
+                  <span>Start on arrival <span className="field-sub">
+                    {cfg.music.autoplay === false ? "waits for play" : "if the browser allows it"}</span></span>
+                  <div className={"switch " + (cfg.music.autoplay !== false ? "on" : "")} role="switch"
+                    aria-checked={cfg.music.autoplay !== false}
+                    onClick={() => upIn("music", { autoplay: cfg.music.autoplay === false })}><div className="knob" /></div>
+                </div>
+                <div className="field-sub" style={{ marginTop: -4 }}>
+                  It waits for the loading screen to finish first — nothing plays while the gallery
+                  is still counting to ten behind a black curtain. Then: browsers refuse sound that
+                  nobody asked for, and phones refuse it always, so the page tries once, tries once
+                  more on the visitor’s first tap or key, and then stops asking. It never fights
+                  someone who has pressed pause.
                 </div>
 
                 {/* ── THE SONG TITLE'S FACE ── */}
@@ -3065,21 +3152,46 @@ function GalleryEditor() {
                     url={cfg.music.fontUrl || ""}
                     family={cfg.music.fontName ? cfg.music.fontName + " Trk" : ""}
                     onChange={({ url, name }) => upIn("music", { fontUrl: url, fontName: name })}
-                    hint="Only the song title in the player uses it. It is set in 24px capitals, so a display face suits it."
+                    hint="Only the song title in the player uses it. It is set in capitals, so a display face suits it."
                   />
-                  {cfg.music.fontUrl ? (
-                    <div className="preview-box" style={{ textAlign: "left", marginTop: 10 }}>
-                      <div className="preview-tag">Live preview</div>
-                      <div style={{
-                        marginTop: 14, fontSize: 24, fontWeight: 800, lineHeight: 1.05,
-                        letterSpacing: "0.04em", textTransform: "uppercase",
-                        fontFamily: `'${cfg.music.fontName} Trk', 'Noto Serif JP', serif`,
-                        backgroundImage: "linear-gradient(95deg, " + playerC1 + ", " + playerC2 + ")",
-                        WebkitBackgroundClip: "text", backgroundClip: "text",
-                        WebkitTextFillColor: "transparent", color: "transparent",
-                      }}>{(cfg.music.tracks[0] && cfg.music.tracks[0].title) || "In the Pool"}</div>
+
+                  {/* ── THE SONG TITLE'S COLOUR ──
+                      One colour, not a pair. It used to be the player's
+                      gradient clipped to the letters; across eleven characters
+                      at 17px that read as a printing fault rather than as a
+                      gradient. Blank follows the player's first colour, which
+                      is the end the gradient started from. */}
+                  <div style={{ marginTop: 10 }}>
+                    <div className="lbl">
+                      Song title colour
+                      <span className="field-sub"> {cfg.music.titleColor ? "its own" : "follows the player"}</span>
                     </div>
-                  ) : null}
+                    <div className="color-row">
+                      <input type="color" className="swatch" value={titleColour}
+                        onChange={(e) => upIn("music", { titleColor: e.target.value })} />
+                      <input className="input" value={cfg.music.titleColor || ""} maxLength={7} placeholder="follows the player"
+                        onChange={(e) => upIn("music", { titleColor: e.target.value })} />
+                      {cfg.music.titleColor
+                        ? <button className="btn btn-tiny" onClick={() => upIn("music", { titleColor: "" })}>clear</button>
+                        : null}
+                    </div>
+                  </div>
+
+                  {/* One preview for both: the face and the colour are the two
+                      things that decide what the song title looks like, and
+                      judging either without the other is guesswork. */}
+                  <div className="preview-box" style={{ textAlign: "left", marginTop: 10 }}>
+                    <div className="preview-tag">Live preview</div>
+                    <div style={{
+                      marginTop: 14, fontSize: 17, fontWeight: 800, lineHeight: 1.05,
+                      letterSpacing: "0.03em", textTransform: "uppercase",
+                      paddingBottom: "0.12em",
+                      fontFamily: cfg.music.fontName
+                        ? `'${cfg.music.fontName} Trk', 'Noto Serif JP', serif`
+                        : "'Noto Serif JP', serif",
+                      color: titleColour,
+                    }}>{(cfg.music.tracks[0] && cfg.music.tracks[0].title) || "First Glance"}</div>
+                  </div>
                 </div>
 
                 {/* Four fixed rows rather than add/remove: the strip is sized
@@ -3142,8 +3254,7 @@ function GalleryEditor() {
                   Upload the audio to R2 and paste the public links. Title and artist can go in
                   before the link — a row with no link yet simply isn't played. The player sits
                   centred under the accent line below the gallery's name, counts which track it is
-                  on in its top-right corner, loops back to the first after the last, and never
-                  starts on its own — a page that makes noise when it opens is a page people close.
+                  on in its top-right corner, and loops back to the first after the last.
                 </div>
               </div>
             </div>
@@ -3163,13 +3274,70 @@ function GalleryEditor() {
             <GalPair label="Beside comments" locked={locked}
               c1={cfg.accents.comment.c1} c2={cfg.accents.comment.c2}
               onC1={(v) => upAcc("comment", { c1: v })} onC2={(v) => upAcc("comment", { c2: v })} />
+
+            {/* ── THE SECTION RULES ──
+                The hairline that runs out beside every game's name down the
+                page. Not a GalPair like the three above, for two reasons: it
+                has a strength of its own, and blank here is MEANINGFUL —
+                it is the plain white rule the gallery has always drawn, which
+                is not a colour you could pick from a swatch. So: placeholders
+                that say what blank does, a clear button to get back to it, and
+                a slider that goes all the way to nothing. */}
+            <div style={{ opacity: locked ? 0.45 : 1, pointerEvents: locked ? "none" : "auto" }}>
+              <div className="lbl">
+                Section rules
+                <span className="field-sub"> {(secLineC1 || secLineC2) ? "its own pair" : "the plain white rule"}</span>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div className="color-row" style={{ flex: 1, minWidth: 140 }}>
+                  <input type="color" className="swatch" value={secLineC1 || cfg.accents.title.c1}
+                    onChange={(e) => upAcc("section", { c1: e.target.value, c2: secLineC2 || cfg.accents.title.c2 })} />
+                  <input className="input" value={secLineC1} maxLength={7} placeholder="plain white"
+                    onChange={(e) => upAcc("section", { c1: e.target.value })} />
+                </div>
+                <div className="color-row" style={{ flex: 1, minWidth: 140 }}>
+                  <input type="color" className="swatch" value={secLineC2 || cfg.accents.title.c2}
+                    onChange={(e) => upAcc("section", { c2: e.target.value, c1: secLineC1 || cfg.accents.title.c1 })} />
+                  <input className="input" value={secLineC2} maxLength={7} placeholder="plain white"
+                    onChange={(e) => upAcc("section", { c2: e.target.value })} />
+                </div>
+              </div>
+              {(secLineC1 || secLineC2) ? (
+                <button className="btn btn-tiny" style={{ marginTop: 8 }}
+                  onClick={() => upAcc("section", { c1: "", c2: "" })}>clear</button>
+              ) : null}
+              <div style={{ marginTop: 10 }}>
+                <div className="sld-head">
+                  <span>How strong</span>
+                  <span className="sld-val">{secLineAmt ? secLineAmt + "%" : "no rule"}</span>
+                </div>
+                <input className="slider" type="range" min="0" max="100" step="1" value={secLineAmt}
+                  onChange={(e) => up({ sectionLine: +e.target.value })} />
+              </div>
+              {/* The row as the page draws it: number, name, rule, count. The
+                  rule is the only part that is being set here, and it is the
+                  one part you cannot judge on its own — it has to be seen
+                  against the things it runs between. */}
+              <div className="preview-box" style={{ textAlign: "left", marginTop: 10 }}>
+                <div className="preview-tag">Live preview</div>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginTop: 14 }}>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--ink-3)", paddingBottom: 5 }}>02</span>
+                  <span style={{ fontSize: 19, fontWeight: 600, lineHeight: 1.1 }}>VR Chat</span>
+                  <span style={{
+                    flex: "1 1 60px", height: 1, marginBottom: 9,
+                    opacity: secLineAmt / 100,
+                    backgroundImage: secLineImg,
+                  }} />
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: ".16em", color: "var(--ink-3)", paddingBottom: 5 }}>04 SHOTS</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
-
 
 function UIEditor({ data, reload }) {
   const t = data.theme || {};
