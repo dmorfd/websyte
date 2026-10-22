@@ -8,23 +8,21 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Gallery · ARandomPerson</title>
-  <link rel="icon" type="image/png" href="/favicon.png?v=2"/>
-  <link rel="apple-touch-icon" href="/favicon.png?v=2"/>
+  <title>Gallery</title>
+  <link rel="icon" type="image/png" href="/favicon.png?v=3"/>
+  <link rel="apple-touch-icon" href="/favicon.png?v=3"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <!-- The shared gallery lives on arandomperson.dev: its API and its photos. -->
+  <link rel="preconnect" href="https://arandomperson.dev" crossorigin/>
   <link rel="preconnect" href="https://pub-3713ba218b584c05bc9be30b5f262c25.r2.dev"/>
-  <!-- Runs before the stylesheet so the owner flag is known on first paint and
-       the dream-journal row is never briefly wrong, and so the colours this
+  <!-- Runs before the stylesheet so the colours this
        device saw last time are already in place before anything is drawn. -->
   <script>
     try {
-      var __qp = location.search.toLowerCase();
-      if (__qp.indexOf('owner') !== -1) {
-        if (/owner=(0|off|false)/.test(__qp)) localStorage.removeItem('arpOwner');
-        else localStorage.setItem('arpOwner', '1');
-      }
-      window.__arpOwner = localStorage.getItem('arpOwner') === '1';
+      // This site's favicon (Admin → Settings), as cached by the main page.
+      var __fav = localStorage.getItem('faviconCache');
+      if (__fav && __fav !== '/favicon.png') document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(function (l) { l.removeAttribute('type'); l.href = __fav; });
 
       // Replay the last-seen theme as inline styles on <html>. Inline styles
       // outrank the stylesheet whatever the document order, so no ordering
@@ -648,7 +646,7 @@
       /* Deliberately NOT var(--g-bg2). The gallery's own background is a dark
          colour rather than black, and full-screen behind nothing else it reads
          as a grey wash. The loading screen is its own moment and is black. */
-      position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+      position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
       background:#000;
       transition:opacity .85s cubic-bezier(.4,0,.2,1), visibility 0s linear .85s;
     }
@@ -908,9 +906,9 @@
 <div class="nav-scrim" id="navScrim" aria-hidden="true"></div>
 <aside class="nav-side" id="navSide" aria-hidden="true" aria-label="Site navigation">
   <div class="nav-side-brand">
-    <span class="nav-side-mark"><img id="navSideAvatar" src="/favicon.png?v=2" alt=""/></span>
+    <span class="nav-side-mark"><img id="navSideAvatar" src="/favicon.png?v=3" alt="" onerror="if(this.src.indexOf('/favicon.png')!==-1)this.style.visibility='hidden';"/></span>
     <span class="nav-side-brandtext">
-      <span class="nav-side-title">arandomperson.dev</span>
+      <span class="nav-side-title" id="navSideTitle"></span>
       <span class="nav-side-sub">navigation</span>
     </span>
   </div>
@@ -922,15 +920,10 @@
       <span class="nav-option-num">02</span><span class="nav-option-label">Gallery</span>
       <span class="nav-option-sub">you are here</span>
     </button>
-    <span class="nav-options-divider" id="navDreamDivider" aria-hidden="true" style="display:none;"></span>
-    <button class="nav-option" id="navOptDream" type="button" style="display:none;">
-      <span class="nav-option-num">03</span><span class="nav-option-label">夢現</span>
-      <span class="nav-option-sub">records of sleep</span>
-    </button>
   </nav>
 </aside>
 
-<header class="g-top">arandomperson<b>.</b>dev <i>/</i> <em>gallery</em></header>
+<header class="g-top" id="gTop"> <i>/</i> <em>gallery</em></header>
 
 <section class="g-hero">
   <div class="g-eyebrow">写真館</div>
@@ -1017,7 +1010,7 @@
   </div>
 </main>
 
-<footer class="g-foot">© 2026 arandomperson.dev</footer>
+<footer class="g-foot" id="gFoot"></footer>
 
 <!-- EXPANDED VIEW -->
 <div class="lb-scrim" id="lbScrim" aria-hidden="true">
@@ -1105,6 +1098,30 @@
   </div>
 </div>
 
+<script>
+// ════ THE SHARED GALLERY ════
+// The photos, comments and likes live on arandomperson.dev, which owns the
+// data. Visitors' browsers call it directly (cross-origin, no key): its rate
+// limits count per visitor, so routing these through this site would put
+// every visitor in one shared bucket. Only get-content stays on this site.
+const GALLERY_API = 'https://arandomperson.dev/.netlify/functions';
+
+// This site's own name, from wherever it's being served.
+const SITE_HOST = location.hostname.replace(/^www\./, '');
+(function initSiteName(){
+  // Separate pieces in the flex bar, spaced like "name . tld / gallery".
+  const dot = SITE_HOST.indexOf('.');
+  const top = document.getElementById('gTop');
+  if (dot > 0) {
+    const b = document.createElement('b'); b.textContent = '.';
+    top.prepend(SITE_HOST.slice(0, dot), b, SITE_HOST.slice(dot + 1));
+  } else {
+    top.prepend(SITE_HOST);
+  }
+  document.getElementById('navSideTitle').textContent = SITE_HOST;
+  document.getElementById('gFoot').textContent = '© ' + new Date().getFullYear() + ' ' + SITE_HOST;
+})();
+</script>
 <script>
 // ════ SETTINGS → CSS ════
 // Every colour on this page is a variable written here from the Gallery
@@ -1388,7 +1405,10 @@
   window.__applyNavTheme = function (theme) {
     if (!theme) return;
     const el = document.documentElement;
-    const bg = hexRgb(theme.sidebarColor), acc = hexRgb(theme.sidebarAccent);
+    // This site's sidebar settings (UI Editor → Sidebar); blank follows its
+    // site accent and page background.
+    const bg = hexRgb(theme.sidebarColor) || hexRgb(theme.bgColor2);
+    const acc = hexRgb(theme.sidebarAccent) || hexRgb(theme.siteAccent);
     if (bg) el.style.setProperty('--nav-bg', bg); else el.style.removeProperty('--nav-bg');
     if (acc) { el.style.setProperty('--nav-accent', acc); el.style.setProperty('--nav-accent2', acc); }
     else { el.style.removeProperty('--nav-accent'); el.style.removeProperty('--nav-accent2'); }
@@ -1408,8 +1428,8 @@
     const cached = localStorage.getItem('avatarUrlCache');
     const mark = document.getElementById('navSideAvatar');
     if (mark && cached && /^https?:\/\//.test(cached)) {
-      mark.addEventListener('error', () => { mark.src = '/favicon.png?v=2'; }, { once: true });
-      mark.src = cached;
+      mark.addEventListener('error', () => { mark.src = '/favicon.png?v=3'; }, { once: true });
+      mark.style.visibility = ''; mark.src = cached;
     }
   } catch (e) {}
 
@@ -1431,22 +1451,8 @@
     if (e.key === 'Escape' && side.classList.contains('open')) close();
   });
 
-  // Returning to a page you were just on should not replay its intro.
-  const skipIntroNext = () => { try { sessionStorage.setItem('arpSkipIntro', '1'); } catch (e) {} };
-  document.getElementById('navOptHome').addEventListener('click', () => { skipIntroNext(); window.location.href = '/'; });
+  document.getElementById('navOptHome').addEventListener('click', () => { window.location.href = '/'; });
   document.getElementById('navOptGallery').addEventListener('click', close);
-
-  // The solar system is deliberately not listed here — it is reached from the
-  // main site, behind its passcode. The journal is, but only where it is
-  // allowed to be seen, and it hands off rather than being duplicated.
-  const optDream = document.getElementById('navOptDream');
-  const divDream = document.getElementById('navDreamDivider');
-  optDream.addEventListener('click', () => { skipIntroNext(); window.location.href = '/?nav=dream'; });
-  try {
-    if (window.__arpOwner || localStorage.getItem('arp_dream_key') || sessionStorage.getItem('arp_mod_key')) {
-      optDream.style.display = ''; divDream.style.display = '';
-    }
-  } catch (e) {}
 })();
 
 // ════ OVERLAY EFFECTS ════
@@ -2231,7 +2237,7 @@
   async function load(){
     let d = null;
     try {
-      const res = await fetch('/.netlify/functions/get-gallery', { cache: 'no-store' });
+      const res = await fetch(GALLERY_API + '/get-gallery', { cache: 'no-store' });
       if (res.ok) d = await res.json();
     } catch (e) {}
 
@@ -2265,7 +2271,7 @@
     // The plate behind the heading is sized off the heading's own box now, so
     // nothing here has to be kept in step with the wording.
     loaderTitle.textContent = heading;
-    document.title = heading + ' · ARandomPerson';
+    document.title = heading + ' · ' + SITE_HOST;
     descEl.textContent = (catalogue.config && catalogue.config.description) || catalogue.intro || '';
 
     const urls = catalogue.images.map((im) => im.url).filter(Boolean);
@@ -2313,7 +2319,7 @@
     const l = document.createElement('span'); l.className = 'lb-cmt-empty'; l.textContent = 'loading…';
     lbList.appendChild(l);
     try {
-      const res = await fetch('/.netlify/functions/get-gallery?image=' + encodeURIComponent(imageId), { cache: 'no-store' });
+      const res = await fetch(GALLERY_API + '/get-gallery?image=' + encodeURIComponent(imageId), { cache: 'no-store' });
       const d = res.ok ? await res.json() : { comments: [] };
       const list = Array.isArray(d.comments) ? d.comments : [];
       const entry = flat.find((f) => f.img.id === imageId);
@@ -2474,7 +2480,7 @@
     entry.img.likes = Math.max(0, (entry.img.likes || 0) + (liked ? 1 : -1));
     paintLike(entry); refreshTileCounts(entry);
     try {
-      const res = await fetch('/.netlify/functions/like-image', {
+      const res = await fetch(GALLERY_API + '/like-image', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageId: entry.img.id, liked }),
       });
@@ -2511,13 +2517,16 @@
     lbSend.disabled = true;
     setStatus('posting…');
     try {
-      const res = await fetch('/.netlify/functions/send-gallery-comment', {
+      const res = await fetch(GALLERY_API + '/send-gallery-comment', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageId: entry.img.id, username, comment }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setStatus(d.error || 'could not post that', 'err'); lbSend.disabled = false; return; }
       setStatus('posted ✓', 'ok');
+      // Tell THIS site to look for it now, so the photo's owner here gets it
+      // in Discord straight away (same-origin, no data, rate-limited).
+      fetch('/.netlify/functions/gallery-comment-check', { method: 'POST' }).catch(() => {});
       lbBody.value = '';
       try {
         localStorage.setItem(NAME_KEY, username);
@@ -2547,10 +2556,43 @@
   // The drawer's colours come from the main site's theme; everything else on
   // this page comes from the gallery's own settings, which arrive with the
   // catalogue.
+  // get-content is THIS site's, same-origin: it also brings this site's
+  // favicon and whose Discord avatar marks the drawer.
   fetch('/.netlify/functions/get-content')
     .then((r) => (r.ok ? r.json() : null))
-    .then((d) => { if (d && d.theme && window.__applyNavTheme) window.__applyNavTheme(d.theme); })
+    .then((d) => {
+      if (!d) return;
+      if (d.theme && window.__applyNavTheme) window.__applyNavTheme(d.theme);
+      // Same rule as the main page: the admin's favicon, else /favicon.png.
+      const fav = d.features && typeof d.features.faviconUrl === 'string' ? d.features.faviconUrl.trim() : '';
+      const setIcon = (href) => {
+        document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
+          if (l.getAttribute('href') === href) return;
+          const n = document.createElement('link'); n.rel = l.rel; n.href = href; l.replaceWith(n);
+        });
+        try { if (href !== '/favicon.png?v=3') localStorage.setItem('faviconCache', href); else localStorage.removeItem('faviconCache'); } catch (e) {}
+      };
+      // A custom favicon only if it really loads as an image.
+      if (fav) { const probe = new Image(); probe.onload = () => setIcon(fav); probe.onerror = () => setIcon('/favicon.png?v=3'); probe.src = fav; }
+      else setIcon('/favicon.png?v=3');
+      if (typeof d.discordUserId === 'string' && /^\d{15,25}$/.test(d.discordUserId)) syncNavAvatar(d.discordUserId);
+    })
     .catch(() => {});
+  // The drawer's mark is this site owner's Discord avatar, live from Lanyard —
+  // the same ?size=256 URL the main page builds and caches.
+  function syncNavAvatar(id){
+    fetch('https://api.lanyard.rest/v1/users/' + id)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const u = j && j.success && j.data && j.data.discord_user;
+        if (!u || !u.avatar) return;
+        const url = 'https://cdn.discordapp.com/avatars/' + id + '/' + u.avatar + '.' + (u.avatar.startsWith('a_') ? 'gif' : 'png') + '?size=256';
+        const mark = document.getElementById('navSideAvatar');
+        if (mark && mark.src !== url) { mark.style.visibility = ''; mark.src = url; }
+        try { localStorage.setItem('avatarUrlCache', url); } catch (e) {}
+      })
+      .catch(() => {});
+  }
   load();
 })();
 </script>
