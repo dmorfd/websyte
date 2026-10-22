@@ -301,6 +301,7 @@
   /* Section page wrapper — sections sit directly on the page background
      (the design has no outer card around a section's content). */
   .sec-page{max-width:1080px;}
+  .sec-page-wide{max-width:1400px;}
   /* ── Compact + grouped layout (legacy scope, still used by a few blocks) ── */
   .compact-editor{padding:20px 22px;}
   .compact-editor .field{padding:9px 12px;gap:5px;border-radius:10px;}
@@ -750,7 +751,58 @@ function ensureAdminFont(name) {
 // enough on its own; the URL is only for self-hosted faces. The name is
 // debounced before we try to fetch it, so we don't hit Google once per
 // keystroke while it's half-typed.
-function FontPicker({ name, url, onName, onUrl, hint }) {
+function familyFromUrl(url) {
+  try {
+    const file = String(url || "").split("?")[0].split("#")[0].split("/").pop() || "";
+    const base = decodeURIComponent(file).replace(/\.(woff2|woff|otf|ttf|eot)$/i, "");
+    // The backend only accepts letters, numbers, spaces, - and _ in a family
+    // name (it ends up inside a CSS custom property), so scrub the rest.
+    const clean = base.replace(/[^A-Za-z0-9 \-_]+/g, " ").replace(/\s+/g, " ").trim();
+    return clean.slice(0, 60) || "Custom Font";
+  } catch (e) { return "Custom Font"; }
+}
+
+// Make a self-hosted face available to the ADMIN page so its live previews
+// render in it. Keyed on name+url so swapping the URL re-registers.
+function ensureAdminFontFile(name, url) {
+  if (!name || !url || !/^https?:\/\//i.test(url)) return;
+  const id = "adminfontfile-" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const m = /\.(woff2|woff|otf|ttf)(\?|$)/i.exec(url);
+  const fmt = m ? ({ woff2: "woff2", woff: "woff", otf: "opentype", ttf: "truetype" })[m[1].toLowerCase()] : "";
+  const css = "@font-face{font-family:'" + name.replace(/'/g, "") + "';src:url('" + url + "')" +
+    (fmt ? " format('" + fmt + "')" : "") + ";font-display:swap;}";
+  let tag = document.getElementById(id);
+  if (tag && tag.textContent === css) return;
+  if (!tag) { tag = document.createElement("style"); tag.id = id; document.head.appendChild(tag); }
+  tag.textContent = css;
+}
+
+// The Gallery Editor's font field (from arandomperson.dev): one URL, the family
+// name derived from it, both reported in ONE onChange call.
+function UrlFontPicker({ url, onChange, hint, family }) {
+  useEffect(() => {
+    const u = (url || "").trim();
+    if (!u) return;
+    const t = setTimeout(() => ensureAdminFontFile(family || familyFromUrl(u), u), 500);
+    return () => clearTimeout(t);
+  }, [url, family]);
+  const set = (v) => onChange({ url: v, name: v.trim() ? familyFromUrl(v) : "" });
+  return (
+    <div className="ctl-stack">
+      <input className="input" value={url} onChange={(e) => set(e.target.value)} placeholder="https://…/font.woff2" maxLength={500} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
+      <div className="field-sub">paste a font file URL — .woff2, .woff, .otf or .ttf. Leave blank for the default.</div>
+      {hint ? <div className="field-sub">{hint}</div> : null}
+    </div>
+  );
+}
+
+// Two forms: onChange → the single-URL field above (Gallery Editor); otherwise
+// this panel's own name + URL field (Enter Screen, Settings, Schedule…).
+function FontPicker(props) {
+  return props.onChange ? <UrlFontPicker {...props} /> : <NamedFontPicker {...props} />;
+}
+
+function NamedFontPicker({ name, url, onName, onUrl, hint }) {
   const [fileState, setFileState] = useState("");
   useEffect(() => {
     const u = (url || "").trim();
@@ -2425,9 +2477,60 @@ function GalleryAdmin() {
 
 
 /* ═══════════════ GALLERY EDITOR (the shared gallery's look) ═══════════════ */
-// gallery-config is ONE shared setting: changing it here changes /gallery on
-// arandomperson.dev too (last write wins). Ported from arandomperson.dev's
-// panel; calls go through gallery-proxy (galleryCall), which adds the key.
+// arandomperson.dev's Gallery Editor, ported as-is. gallery-config is ONE
+// shared setting: publishing here changes /gallery on both sites, last write
+// wins. Its calls go through this site's gallery-proxy (apiGallery below),
+// which adds the gallery key on the server.
+
+// The editor's API call, in the shape it expects (throws on failure), on top
+// of the panel's existing proxy call, which carries this site's admin key.
+async function apiGallery(body) {
+  const r = await galleryCall(body);
+  if (!r.ok) {
+    const err = new Error(galleryError(r));
+    err.status = r.status; err.data = r.data;
+    throw err;
+  }
+  return r.data;
+}
+
+// Publish only what changed: [[type, current, asLoaded], ...] → save(type,
+// current) for each that differs; "0 things to publish" when none do.
+async function publishChanged(items, save, showStatus) {
+  const changed = items.filter(([, cur, was]) => JSON.stringify(cur) !== JSON.stringify(was));
+  if (!changed.length) { showStatus("0 things to publish"); return; }
+  try {
+    for (const [type, cur] of changed) await save(type, cur);
+    showStatus(changed.length === 1 ? "published ✓" : "published " + changed.length + " things ✓");
+  } catch (e) { showStatus(e.message || "publish failed", "err"); }
+}
+
+// The whole config at its defaults (handover §4.9). The server sends it
+// normalised; this only fills a gap if something older is missing a field.
+const GAL_DEFAULT_CONFIG = {
+  theme: "none",
+  title: { text: "", fontUrl: "", fontName: "", c1: "#d7263d", c2: "#e3b04b", angle: 135, blur: 0, size: 100 },
+  description: "", descBlur: 0, descColor: "",
+  imageFont: { url: "", name: "" },
+  density: "comfortable", tileGlass: true, likes: true, overlay: "none",
+  bg: { c1: "#1a0f12", c2: "#0b090a" },
+  tileGlow: "",
+  music: { enabled: false, showCover: true, coverUrl: "", volume: 60, c1: "", c2: "", accentFrom: "", accentTo: "", fontUrl: "", fontName: "", tint: "", tintStrength: 72, tracks: [] },
+  video: { enabled: false, desktopUrl: "", mobileUrl: "", tint: "#000000", tintStrength: 45 },
+  accents: { title: { c1: "#d7263d", c2: "#e3b04b" }, date: { c1: "#d7263d", c2: "#e3b04b" }, comment: { c1: "#d7263d", c2: "#e3b04b" } },
+  preset: null,
+};
+function galWithDefaults(def, v) {
+  if (Array.isArray(def)) return Array.isArray(v) ? v : def;
+  if (def && typeof def === "object") {
+    const o = v && typeof v === "object" && !Array.isArray(v) ? v : {};
+    const out = { ...o };
+    for (const k of Object.keys(def)) out[k] = galWithDefaults(def[k], o[k]);
+    return out;
+  }
+  return v === undefined || (typeof def !== "object" && def !== null && typeof v !== typeof def) ? def : v;
+}
+
 const GAL_THEMES = [
   { id: "none", label: "None (pick your own colours)" },
   { id: "indigo", label: "Indigo & Silver" },
@@ -2440,41 +2543,20 @@ const GAL_OVERLAYS = [
   { id: "rain", label: "Rain" },
 ];
 
-// Every field the editor touches, so a config missing one still renders.
-function galCfg(c) {
-  const o = (v) => (v && typeof v === "object" ? v : {});
-  const pair = (v, a, b) => ({ c1: isHex(o(v).c1) ? o(v).c1 : a, c2: isHex(o(v).c2) ? o(v).c2 : b });
-  const x = o(c), t = o(x.title), v = o(x.video), acc = o(x.accents);
-  return {
-    ...x,
-    theme: typeof x.theme === "string" ? x.theme : "none",
-    title: { ...t, text: t.text || "", fontUrl: t.fontUrl || "", fontName: t.fontName || "", ...pair(t, "#d7263d", "#e3b04b"), angle: typeof t.angle === "number" ? t.angle : 135, blur: typeof t.blur === "number" ? t.blur : 0 },
-    tileGlow: isHex(x.tileGlow) ? x.tileGlow : "",
-    music: (() => { const m = o(x.music); return { ...m, enabled: m.enabled === true, showCover: m.showCover !== false, coverUrl: m.coverUrl || "", volume: typeof m.volume === "number" ? m.volume : 60, tracks: Array.isArray(m.tracks) ? m.tracks.filter((t) => t && typeof t === "object") : [] }; })(),
-    description: typeof x.description === "string" ? x.description : "",
-    density: x.density === "compact" ? "compact" : "comfortable",
-    tileGlass: x.tileGlass !== false,
-    likes: x.likes !== false,
-    overlay: typeof x.overlay === "string" ? x.overlay : "none",
-    bg: { ...o(x.bg), ...pair(x.bg, "#1a0f12", "#0b090a") },
-    video: { ...v, enabled: v.enabled === true, desktopUrl: v.desktopUrl || "", mobileUrl: v.mobileUrl || "", tint: isHex(v.tint) ? v.tint : "#000000", tintStrength: typeof v.tintStrength === "number" ? v.tintStrength : 45 },
-    accents: { ...acc, title: pair(acc.title, "#d7263d", "#e3b04b"), date: pair(acc.date, "#d7263d", "#e3b04b"), comment: pair(acc.comment, "#d7263d", "#e3b04b") },
-  };
-}
-
 // A colour pair, which this editor needs six of. `locked` greys it out when a
-// theme preset is in force — the preset decides these.
+// theme preset is in force — the preset decides these, and a control that
+// looks editable but isn't would be lying.
 function GalPair({ label, hint, c1, c2, onC1, onC2, locked }) {
   return (
     <div style={{ opacity: locked ? 0.45 : 1, pointerEvents: locked ? "none" : "auto" }}>
       <div className="lbl">{label}{hint && <span className="field-sub"> {hint}</span>}</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <div className="color-row" style={{ flex: 1, minWidth: 120 }}>
-          <input type="color" className="swatch" value={isHex(c1) ? c1 : "#000000"} disabled={locked} onChange={(e) => onC1(e.target.value)} />
+          <input type="color" className="swatch" value={c1} disabled={locked} onChange={(e) => onC1(e.target.value)} />
           <input className="input" value={c1} maxLength={7} disabled={locked} onChange={(e) => onC1(e.target.value)} />
         </div>
         <div className="color-row" style={{ flex: 1, minWidth: 120 }}>
-          <input type="color" className="swatch" value={isHex(c2) ? c2 : "#000000"} disabled={locked} onChange={(e) => onC2(e.target.value)} />
+          <input type="color" className="swatch" value={c2} disabled={locked} onChange={(e) => onC2(e.target.value)} />
           <input className="input" value={c2} maxLength={7} disabled={locked} onChange={(e) => onC2(e.target.value)} />
         </div>
       </div>
@@ -2482,72 +2564,79 @@ function GalPair({ label, hint, c1, c2, onC1, onC2, locked }) {
   );
 }
 
+
 function GalleryEditor() {
   const [cfg, setCfg] = useState(null);
   const [base, setBase] = useState(null);       // ...as the server has it
-  const [loadErr, setLoadErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, showStatus] = useSaveStatus();
 
   const load = useCallback(async () => {
-    setLoadErr("");
     try {
-      const r = await galleryCall({ action: "list" });
-      if (!r.ok) { setLoadErr(galleryError(r)); return; }
-      const c = galCfg(r.data.config);
-      setCfg(c); setBase(JSON.parse(JSON.stringify(c)));
-    } catch (e) { setLoadErr(e.message || "couldn't reach the gallery proxy"); }
-  }, []);
+      const r = await apiGallery({ action: "list" });
+      if (r.config) { const c = galWithDefaults(GAL_DEFAULT_CONFIG, r.config); setCfg(c); setBase(JSON.parse(JSON.stringify(c))); }
+    } catch (e) { showStatus(e.message, "err"); }
+  }, [showStatus]);
   useEffect(() => { load(); }, [load]);
 
   const publish = async () => {
     if (!cfg) return;
-    if (JSON.stringify(cfg) === JSON.stringify(base)) { showStatus("0 things to publish"); return; }
     setBusy(true);
-    try {
-      const r = await galleryCall({ action: "save-config", config: cfg });
-      if (!r.ok) showStatus(galleryError(r), "err");
-      else {
+    await publishChanged(
+      [["gallery-config", cfg, base]],
+      async (type, payload) => {
+        const r = await apiGallery({ action: "save-config", config: payload });
         // Take the server's normalised copy back, so a value it clamped or
         // rejected shows up here instead of sitting in the form looking saved.
-        if (r.data.config) { const c = galCfg(r.data.config); setCfg(c); setBase(JSON.parse(JSON.stringify(c))); }
-        else setBase(JSON.parse(JSON.stringify(cfg)));
-        showStatus("published ✓ — both sites");
-      }
-    } catch (e) { showStatus(e.message || "publish failed", "err"); }
+        if (r.config) { const c = galWithDefaults(GAL_DEFAULT_CONFIG, r.config); setCfg(c); setBase(JSON.parse(JSON.stringify(c))); }
+        else setBase(JSON.parse(JSON.stringify(payload)));
+      },
+      showStatus,
+    );
     setBusy(false);
   };
 
   if (!cfg) {
-    return (
-      <div className="sec-page">
-        <EditorHead title="Gallery Editor" meta={loadErr ? "" : "loading…"} status={status} onReset={load} />
-        {loadErr ? <div className="glass" style={{ fontSize: 12.5, color: "#ff9aa8", lineHeight: 1.6 }}>{loadErr}</div> : null}
-      </div>
-    );
+    return <div className="sec-page"><EditorHead title="Gallery Editor" meta="loading…" status={status} /></div>;
   }
 
+  // A theme preset owns every colour on the page. While one is chosen the colour
+  // controls are shown but disabled, so it is obvious they exist and equally
+  // obvious they are not what's in force. "None" hands them back.
   const locked = cfg.theme !== "none";
   const up = (patch) => setCfg(Object.assign({}, cfg, patch));
   const upIn = (key, patch) => up({ [key]: Object.assign({}, cfg[key], patch) });
+  // What the page will ACTUALLY draw with: a preset wins over the individual
+  // colours, so previewing cfg.title.c1 while a preset is chosen would show a
+  // gradient nobody is going to see.
+  const presetColours = { indigo: ["#5468ff", "#c8d0e6"], jade: ["#22a27a", "#f0a43a"] }[cfg.theme];
+  const previewC1 = presetColours ? presetColours[0] : cfg.title.c1;
+  const previewC2 = presetColours ? presetColours[1] : cfg.title.c2;
   const upAcc = (which, patch) => up({ accents: Object.assign({}, cfg.accents, { [which]: Object.assign({}, cfg.accents[which], patch) }) });
+  // What the PLAYER will actually wear. Its own pair when one is set, and the
+  // title accent it follows when not — the same fallback the page makes, so a
+  // swatch here never shows a colour the player is not going to use.
+  const playerC1 = cfg.music.c1 || cfg.accents.title.c1;
+  const playerC2 = cfg.music.c2 || cfg.accents.title.c2;
 
   return (
-    <div className="sec-page">
+    <div className="sec-page sec-page-wide">
       <EditorHead
         title="Gallery Editor"
-        meta={"how /gallery looks on both sites · " + (locked ? "theme preset in force" : "your own colours")}
+        meta={"how /gallery.html looks · " + (locked ? "theme preset in force" : "your own colours")}
         status={status} onReset={load} onPublish={publish} busy={busy}
       />
-      <div className="glass" style={{ marginBottom: 14, fontSize: 12, color: "var(--ink-2)", lineHeight: 1.6 }}>
-        Shared with arandomperson.dev: one gallery, one look. Publishing here changes their /gallery too, and their changes show up here — last write wins.
-      </div>
 
-      <div className="sec-grid">
+      {/* Masonry rather than a grid: these cards are wildly different heights
+          — Description is four lines, Sound player is four tracks — and a grid
+          row is as tall as its tallest cell, so a third of the page was gaps.
+          Columns pack them instead. One column on a phone, as before. */}
+      <div className="sec-masonry">
+        {/* ── THEME ── */}
         <div className="glass">
           <div className="grp-head"><span className="grp-title">Theme</span></div>
           <div className="ctl-stack">
-            <select className="input" value={cfg.theme} onChange={(e) => up({ theme: e.target.value })} aria-label="Gallery theme">
+            <select className="input" value={cfg.theme} onChange={(e) => up({ theme: e.target.value })}>
               {GAL_THEMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
             <div className="field-sub">
@@ -2558,6 +2647,7 @@ function GalleryEditor() {
           </div>
         </div>
 
+        {/* ── TITLE ── */}
         <div className="glass">
           <div className="grp-head"><span className="grp-title">Title</span></div>
           <div className="ctl-stack">
@@ -2569,9 +2659,9 @@ function GalleryEditor() {
             <div>
               <div className="lbl">Font <span className="field-sub">a file you host</span></div>
               <FontPicker
-                name={cfg.title.fontName || ""} url={cfg.title.fontUrl || ""}
-                onName={(v) => upIn("title", { fontName: v })} onUrl={(v) => upIn("title", { fontUrl: v })}
-                hint="Only the gallery title uses it. Upload the file to R2 and paste its public URL; the name is optional."
+                url={cfg.title.fontUrl || ""}
+                onChange={({ url, name }) => upIn("title", { fontUrl: url, fontName: name })}
+                hint="Only the gallery title uses it. Upload the file to R2 and paste its public URL."
               />
             </div>
             <GalPair label="Gradient" locked={locked}
@@ -2583,30 +2673,156 @@ function GalleryEditor() {
                 onChange={(e) => upIn("title", { angle: +e.target.value })} />
             </div>
             <div>
-              <div className="sld-head"><span>Glow</span><span className="sld-val">{cfg.title.blur ? cfg.title.blur + "px" : "off"}</span></div>
+              <div className="sld-head"><span>Title size</span><span className="sld-val">{cfg.title.size || 100}%</span></div>
+              <input className="slider" type="range" min="50" max="160" step="5" value={cfg.title.size || 100}
+                onChange={(e) => upIn("title", { size: +e.target.value })} />
+            </div>
+            <div>
+              <div className="sld-head"><span>Blur behind the title</span><span className="sld-val">{cfg.title.blur ? cfg.title.blur + "px" : "off"}</span></div>
               <input className="slider" type="range" min="0" max="40" step="1" value={cfg.title.blur || 0}
                 onChange={(e) => upIn("title", { blur: +e.target.value })} />
-              <div className="field-sub">
-                A blurred copy of the heading in its own colours, sitting behind it. Off at 0.
-                It follows the letterforms rather than painting a block behind them, and it is
-                skipped for visitors who ask for reduced motion.
+            </div>
+            {/* The angle, the size and the blur are all hard to picture from a
+                number, and the alternative is publishing to find out. Drawn
+                with the colours actually in force — a preset's, when one is
+                chosen — and with the hosted font if there is one, over a
+                photograph-ish backdrop so the plate has something to blur:
+                over a flat panel a backdrop blur shows nothing, which is also
+                true on the page itself. */}
+            <div className="preview-box" style={{ padding: 0, overflow: "hidden" }}>
+              <div className="preview-tag" style={{ zIndex: 3 }}>Live preview</div>
+              <div style={{
+                position: "relative", padding: "30px 16px 26px",
+                backgroundImage:
+                  "radial-gradient(90px 70px at 22% 30%, rgba(255,255,255,.16), transparent 70%),"
+                  + "radial-gradient(120px 90px at 78% 72%, " + previewC1 + "55, transparent 72%),"
+                  + "repeating-linear-gradient(118deg, rgba(255,255,255,.055) 0 7px, transparent 7px 15px),"
+                  + "linear-gradient(160deg, " + (cfg.bg.c1 || "#1a0f12") + ", " + (cfg.bg.c2 || "#0b090a") + ")",
+              }}>
+                {/* The plate, drawn exactly as .g-titlewrap::before draws it. */}
+                <div style={{
+                  position: "absolute", left: "8%", right: "8%", top: 16, bottom: 14,
+                  borderRadius: 26, pointerEvents: "none", zIndex: 1,
+                  opacity: cfg.title.blur ? Math.min(1, cfg.title.blur / 12) : 0,
+                  backdropFilter: `blur(${cfg.title.blur || 0}px)`,
+                  WebkitBackdropFilter: `blur(${cfg.title.blur || 0}px)`,
+                  background: "radial-gradient(62% 74% at 42% 50%, rgba(0,0,0,.46), transparent 78%)",
+                }} />
+                <div style={{
+                  position: "relative", zIndex: 2,
+                  fontSize: Math.round(34 * ((cfg.title.size || 100) / 100)),
+                  fontWeight: 900, lineHeight: 1.05, letterSpacing: "-0.02em",
+                  wordBreak: "break-word",
+                  fontFamily: cfg.title.fontName ? `'${cfg.title.fontName}', serif` : "'Instrument Serif', serif",
+                  backgroundImage: `linear-gradient(${cfg.title.angle}deg, ${previewC1}, ${previewC2})`,
+                  WebkitBackgroundClip: "text", backgroundClip: "text",
+                  WebkitTextFillColor: "transparent", color: "transparent",
+                }}>
+                  {cfg.title.text || "Gallery"}
+                </div>
               </div>
             </div>
-            <div className="field-sub">The angle applies whichever colours are in force, preset or not.</div>
+            <div className="field-sub">
+              The angle applies whichever colours are in force, preset or not. The size is a
+              proportion of the responsive size rather than a fixed one, so the heading still
+              shrinks to fit a phone instead of running off the side of it. The blur is the plate
+              behind the heading — worth a few pixels if a video is playing back there, and
+              nothing at all at 0.
+            </div>
           </div>
         </div>
 
+        {/* ── DESCRIPTION ── */}
         <div className="glass">
           <div className="grp-head"><span className="grp-title">Description</span></div>
-          <textarea className="textarea" rows={4} maxLength={400} value={cfg.description}
+          <textarea className="input" rows={4} maxLength={400} value={cfg.description}
             placeholder="The line under the title."
             onChange={(e) => up({ description: e.target.value })} />
           <div className="field-sub" style={{ marginTop: 6 }}>{cfg.description.length}/400</div>
+          <div className="ctl-stack" style={{ marginTop: 12 }}>
+            <div>
+              <div className="lbl">
+                Text colour
+                <span className="field-sub"> {cfg.descColor ? "its own" : "the page's muted colour"}</span>
+              </div>
+              <div className="color-row">
+                <input type="color" className="swatch" value={cfg.descColor || "#a89a90"}
+                  onChange={(e) => up({ descColor: e.target.value })} />
+                <input className="input" value={cfg.descColor} maxLength={7} placeholder="follows the page"
+                  onChange={(e) => up({ descColor: e.target.value })} />
+                {cfg.descColor
+                  ? <button className="btn btn-tiny" onClick={() => up({ descColor: "" })}>clear</button>
+                  : null}
+              </div>
+            </div>
+            <div>
+              <div className="sld-head"><span>Blur behind the description</span><span className="sld-val">{cfg.descBlur ? cfg.descBlur + "px" : "off"}</span></div>
+              <input className="slider" type="range" min="0" max="40" step="1" value={cfg.descBlur || 0}
+                onChange={(e) => up({ descBlur: +e.target.value })} />
+            </div>
+            <div className="preview-box" style={{ padding: 0, overflow: "hidden" }}>
+              <div className="preview-tag" style={{ zIndex: 3 }}>Live preview</div>
+              <div style={{
+                position: "relative", padding: "24px 18px", textAlign: "left",
+                backgroundImage:
+                  "radial-gradient(90px 70px at 18% 26%, rgba(255,255,255,.16), transparent 70%),"
+                  + "radial-gradient(120px 90px at 82% 74%, " + previewC1 + "55, transparent 72%),"
+                  + "repeating-linear-gradient(118deg, rgba(255,255,255,.055) 0 7px, transparent 7px 15px),"
+                  + "linear-gradient(160deg, " + (cfg.bg.c1 || "#1a0f12") + ", " + (cfg.bg.c2 || "#0b090a") + ")",
+              }}>
+                <div style={{
+                  position: "absolute", left: 6, right: 6, top: 12, bottom: 12,
+                  borderRadius: 18, pointerEvents: "none", zIndex: 1,
+                  opacity: cfg.descBlur ? Math.min(1, cfg.descBlur / 12) : 0,
+                  backdropFilter: `blur(${cfg.descBlur || 0}px)`,
+                  WebkitBackdropFilter: `blur(${cfg.descBlur || 0}px)`,
+                  background: "radial-gradient(72% 92% at 32% 50%, rgba(0,0,0,.42), transparent 82%)",
+                }} />
+                <div style={{ position: "relative", zIndex: 2, fontSize: 13.5, lineHeight: 1.6, color: cfg.descColor || "rgba(253,245,236,0.72)" }}>
+                  {cfg.description || "The line under the title."}
+                </div>
+              </div>
+            </div>
+            <div className="field-sub">
+              A plate behind the description, on the same terms as the title's: the slider is how
+              far it blurs, and the wash comes up with it because a blur alone shows nothing over
+              a flat gradient. Leave it at 0 unless there is a video back there.
+            </div>
+          </div>
         </div>
 
+        {/* ── LAYOUT ── */}
         <div className="glass">
           <div className="grp-head"><span className="grp-title">Layout</span></div>
           <div className="ctl-stack">
+            {/* The face on the photographs themselves — the caption under each
+                tile and the heading in the expanded view. Its own setting
+                rather than a share of the title's, because one is a display
+                face used once at the top of the page and the other is read
+                dozens of times down it. */}
+            <div>
+              <div className="lbl">Image title font <span className="field-sub">a file you host</span></div>
+              <FontPicker
+                url={(cfg.imageFont && cfg.imageFont.url) || ""}
+                family={(cfg.imageFont && cfg.imageFont.name) ? cfg.imageFont.name + " Img" : ""}
+                onChange={({ url, name }) => upIn("imageFont", { url, name })}
+                hint="Upload the file to R2 and paste its public URL. Used only for photo titles — the gallery's own heading keeps its font above."
+              />
+              {(cfg.imageFont && cfg.imageFont.url) ? (
+                <div className="preview-box" style={{ textAlign: "left", marginTop: 10 }}>
+                  <div className="preview-tag">Live preview</div>
+                  <div style={{
+                    marginTop: 12, fontSize: 15, fontWeight: 600, lineHeight: 1.35,
+                    fontFamily: `'${cfg.imageFont.name} Img', 'Noto Serif JP', serif`,
+                  }}>Cat in the snow</div>
+                  <div style={{
+                    marginTop: 8, fontSize: 24, fontWeight: 600, lineHeight: 1.2,
+                    fontFamily: `'${cfg.imageFont.name} Img', 'Noto Serif JP', serif`,
+                  }}>Cat in the snow</div>
+                  <div className="field-sub" style={{ marginTop: 8 }}>the caption size, then the expanded size</div>
+                </div>
+              ) : null}
+            </div>
             <div>
               <div className="lbl">Image density</div>
               <select className="input" value={cfg.density} onChange={(e) => up({ density: e.target.value })}>
@@ -2634,6 +2850,7 @@ function GalleryEditor() {
           </div>
         </div>
 
+        {/* ── BACKGROUND ── */}
         <div className="glass">
           <div className="grp-head"><span className="grp-title">Background</span></div>
           <div className="ctl-stack">
@@ -2689,12 +2906,14 @@ function GalleryEditor() {
                     onChange={(e) => upIn("video", { tintStrength: +e.target.value })} />
                 </div>
                 <div className="field-sub">
-                  The tint only exists to make text readable over moving footage, so it goes away with the video.
+                  The tint only exists to make text readable over moving footage, so it goes away with the
+                  video — washing a gradient you already chose the colour of would just muddy it.
                 </div>
               </div>
             </div>
             <div className="field-sub">
-              With a video on, the title gets a soft blurred plate behind it so it stays legible.
+              With a video on, the title gets a soft blurred plate behind it so it stays legible over
+              whatever is moving underneath.
             </div>
           </div>
         </div>
@@ -2703,7 +2922,7 @@ function GalleryEditor() {
         <div className="glass">
           <div className="grp-head" style={{ justifyContent: "space-between" }}>
             <span className="grp-title">Sound player</span>
-            <span className="field-sub">under the gallery's name</span>
+            <span className="field-sub">under the accent line</span>
           </div>
           <div className="ctl-stack">
             <div className="ctl-row">
@@ -2711,6 +2930,7 @@ function GalleryEditor() {
               <div className={"switch " + (cfg.music.enabled ? "on" : "")} role="switch" aria-checked={cfg.music.enabled}
                 onClick={() => upIn("music", { enabled: !cfg.music.enabled })}><div className="knob" /></div>
             </div>
+
             <div style={{ opacity: cfg.music.enabled ? 1 : 0.45, pointerEvents: cfg.music.enabled ? "auto" : "none" }}>
               <div className="ctl-stack">
                 <div className="ctl-row">
@@ -2719,7 +2939,7 @@ function GalleryEditor() {
                     onClick={() => upIn("music", { showCover: !cfg.music.showCover })}><div className="knob" /></div>
                 </div>
                 <div style={{ opacity: cfg.music.showCover ? 1 : 0.45 }}>
-                  <div className="lbl">Cover URL</div>
+                  <div className="lbl">Default cover <span className="field-sub">used by any track without its own</span></div>
                   <input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}
                     value={cfg.music.coverUrl} maxLength={500} placeholder="https://…r2.dev/cover.jpg"
                     onChange={(e) => upIn("music", { coverUrl: e.target.value })} />
@@ -2730,20 +2950,165 @@ function GalleryEditor() {
                     onChange={(e) => upIn("music", { volume: +e.target.value })} />
                   <div className="field-sub">Where it starts. Nothing plays until a visitor presses play.</div>
                 </div>
+
+                {/* ── ITS OWN COLOURS ──
+                    Blank follows the title accent pair, which is what the
+                    player wore before this existed. Setting either end fills
+                    the other from what it was following, so you can't end up
+                    with half a gradient and half an inherited one. */}
+                <div style={{ opacity: locked ? 0.45 : 1, pointerEvents: locked ? "none" : "auto" }}>
+                  <div className="lbl">
+                    Player colours
+                    <span className="field-sub"> {locked ? "the theme preset owns every colour"
+                      : (cfg.music.c1 || cfg.music.c2) ? "its own pair" : "follows the title accent"}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <input type="color" className="swatch" value={playerC1}
+                      onChange={(e) => upIn("music", { c1: e.target.value, c2: playerC2 })} />
+                    <input type="color" className="swatch" value={playerC2}
+                      onChange={(e) => upIn("music", { c2: e.target.value, c1: playerC1 })} />
+                    {/* The pair as the player will actually wear it — a gradient
+                        is two swatches plus the angle between them, and two
+                        squares side by side don't show that. */}
+                    <div style={{
+                      flex: 1, minWidth: 90, height: 26, borderRadius: 8,
+                      border: "1px solid var(--line-2)",
+                      background: "linear-gradient(135deg, " + playerC1 + ", " + playerC2 + ")",
+                    }} />
+                    {(cfg.music.c1 || cfg.music.c2)
+                      ? <button className="btn btn-tiny" onClick={() => upIn("music", { c1: "", c2: "" })}>clear</button>
+                      : null}
+                  </div>
+                  <div className="field-sub">
+                    Colours the play disc, the ring around it, the song title and the
+                    progress bar. Left clear it follows the title accent below, which is not the same
+                    as picking those two colours by hand — change the accent later and the player
+                    follows it.
+                  </div>
+                </div>
+
+                {/* ── THE TRIM ──
+                    The hairline across the top of the panel. Its own pair
+                    because it is the one piece that reads as trim rather than
+                    as a control, and blank follows the pair above — which
+                    itself follows the title accent. Three steps, each a
+                    fallback rather than a copy. */}
+                <div style={{ opacity: locked ? 0.45 : 1, pointerEvents: locked ? "none" : "auto" }}>
+                  <div className="lbl">
+                    Top accent line
+                    <span className="field-sub"> {(cfg.music.accentFrom || cfg.music.accentTo) ? "its own pair" : "follows the player colours"}</span>
+                  </div>
+                  {/* Two groups rather than one row of four fields: side by
+                      side in a single row the inputs are narrow enough to clip
+                      their own placeholder, which is the only thing telling
+                      you that blank means "follow". */}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <div className="color-row" style={{ flex: 1, minWidth: 140 }}>
+                      <input type="color" className="swatch" value={cfg.music.accentFrom || playerC1}
+                        onChange={(e) => upIn("music", { accentFrom: e.target.value, accentTo: cfg.music.accentTo || playerC2 })} />
+                      <input className="input" value={cfg.music.accentFrom} maxLength={7} placeholder="follows player"
+                        onChange={(e) => upIn("music", { accentFrom: e.target.value })} />
+                    </div>
+                    <div className="color-row" style={{ flex: 1, minWidth: 140 }}>
+                      <input type="color" className="swatch" value={cfg.music.accentTo || playerC2}
+                        onChange={(e) => upIn("music", { accentTo: e.target.value, accentFrom: cfg.music.accentFrom || playerC1 })} />
+                      <input className="input" value={cfg.music.accentTo} maxLength={7} placeholder="follows player"
+                        onChange={(e) => upIn("music", { accentTo: e.target.value })} />
+                    </div>
+                  </div>
+                  {(cfg.music.accentFrom || cfg.music.accentTo) ? (
+                    <button className="btn btn-tiny" style={{ marginTop: 8 }}
+                      onClick={() => upIn("music", { accentFrom: "", accentTo: "" })}>clear</button>
+                  ) : null}
+                  <div style={{
+                    marginTop: 8, height: 2, borderRadius: 2,
+                    background: "linear-gradient(90deg, transparent, " + (cfg.music.accentFrom || playerC1)
+                      + " 30%, " + (cfg.music.accentTo || playerC2) + " 70%, transparent)",
+                  }} />
+                </div>
+
+                {/* ── THE GLASS ── */}
+                <div>
+                  <div className="lbl">
+                    Panel tint
+                    <span className="field-sub"> {cfg.music.tint ? "its own colour" : "the page's panel colour"}</span>
+                  </div>
+                  <div className="color-row">
+                    <input type="color" className="swatch" value={cfg.music.tint || "#1e1417"}
+                      onChange={(e) => upIn("music", { tint: e.target.value })} />
+                    <input className="input" value={cfg.music.tint} maxLength={7} placeholder="follows the page"
+                      onChange={(e) => upIn("music", { tint: e.target.value })} />
+                    {cfg.music.tint
+                      ? <button className="btn btn-tiny" onClick={() => upIn("music", { tint: "" })}>clear</button>
+                      : null}
+                  </div>
+                </div>
+                <div>
+                  <div className="sld-head">
+                    <span>Panel opacity</span>
+                    <span className="sld-val">{cfg.music.tintStrength ? cfg.music.tintStrength + "%" : "no panel"}</span>
+                  </div>
+                  <input className="slider" type="range" min="0" max="100" step="1" value={cfg.music.tintStrength}
+                    onChange={(e) => upIn("music", { tintStrength: +e.target.value })} />
+                  <div className="field-sub">
+                    How solid the glass is. The blur behind it stays all the way down, so even a
+                    sheer panel keeps the text on it readable — until <b>0</b>, where the panel
+                    goes entirely: no fill, no blur, no border, no corner marks and no top line,
+                    leaving the controls on the page with nothing behind them.
+                  </div>
+                </div>
+
+                {/* ── THE SONG TITLE'S FACE ── */}
+                <div>
+                  <div className="lbl">Song title font <span className="field-sub">a file you host</span></div>
+                  <FontPicker
+                    url={cfg.music.fontUrl || ""}
+                    family={cfg.music.fontName ? cfg.music.fontName + " Trk" : ""}
+                    onChange={({ url, name }) => upIn("music", { fontUrl: url, fontName: name })}
+                    hint="Only the song title in the player uses it. It is set in 24px capitals, so a display face suits it."
+                  />
+                  {cfg.music.fontUrl ? (
+                    <div className="preview-box" style={{ textAlign: "left", marginTop: 10 }}>
+                      <div className="preview-tag">Live preview</div>
+                      <div style={{
+                        marginTop: 14, fontSize: 24, fontWeight: 800, lineHeight: 1.05,
+                        letterSpacing: "0.04em", textTransform: "uppercase",
+                        fontFamily: `'${cfg.music.fontName} Trk', 'Noto Serif JP', serif`,
+                        backgroundImage: "linear-gradient(95deg, " + playerC1 + ", " + playerC2 + ")",
+                        WebkitBackgroundClip: "text", backgroundClip: "text",
+                        WebkitTextFillColor: "transparent", color: "transparent",
+                      }}>{(cfg.music.tracks[0] && cfg.music.tracks[0].title) || "In the Pool"}</div>
+                    </div>
+                  ) : null}
+                </div>
+
                 {/* Four fixed rows rather than add/remove: the strip is sized
-                    for four, and a row left blank simply isn't a track. */}
+                    for four, and a row left blank simply isn't a track.
+                    The rows are kept BY INDEX, blanks and all. Compacting them
+                    away meant a title typed before the link vanished as it was
+                    typed, and the rows below shuffled up into the gap — which
+                    is why rows 2, 3 and 4 could only be filled in URL-first. */}
                 {[0, 1, 2, 3].map((i) => {
                   const list = Array.isArray(cfg.music.tracks) ? cfg.music.tracks : [];
-                  const t = Object.assign({ title: "", artist: "", url: "" }, list[i] || {});
+                  const t = list[i] || { title: "", artist: "", url: "", cover: "" };
                   const setTrack = (patch) => {
-                    const next = [0, 1, 2, 3].map((j) => Object.assign({ title: "", artist: "", url: "" }, list[j] || {}));
+                    const next = [0, 1, 2, 3].map((j) => Object.assign({ title: "", artist: "", url: "", cover: "" }, list[j] || {}));
                     next[i] = Object.assign({}, next[i], patch);
-                    // Only rows with a URL are real; the rest are empty slots.
-                    upIn("music", { tracks: next.filter((x) => String(x.url || "").trim()) });
+                    // Trailing blanks are trimmed so four empty rows do not sit
+                    // in the blob and turn up in every diff; a blank row with
+                    // something after it stays, because its position matters.
+                    while (next.length && !next[next.length - 1].title && !next[next.length - 1].artist
+                           && !next[next.length - 1].url && !next[next.length - 1].cover) next.pop();
+                    upIn("music", { tracks: next });
                   };
+                  const empty = !t.title && !t.artist && !t.url && !t.cover;
                   return (
                     <div key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? 10 : 0 }}>
-                      <div className="lbl">Track {i + 1}{!t.url && <span className="field-sub"> empty</span>}</div>
+                      <div className="lbl">
+                        Track {i + 1}
+                        {empty ? <span className="field-sub"> empty</span>
+                          : !t.url ? <span className="field-sub"> no link yet — won't play</span> : null}
+                      </div>
                       <div className="ctl-stack">
                         <div className="rep-row">
                           <input className="input" value={t.title} maxLength={80} placeholder="Title"
@@ -2754,20 +3119,38 @@ function GalleryEditor() {
                         <input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}
                           value={t.url} maxLength={500} placeholder="https://…r2.dev/track.mp3"
                           onChange={(e) => setTrack({ url: e.target.value })} />
+                        {/* The switch is the panel's own, not a checkbox —
+                            every other toggle here looks like this. Turning it
+                            off clears the URL rather than hiding a value that
+                            would silently come back on the next toggle. */}
+                        <div className="ctl-row" style={{ opacity: cfg.music.showCover ? 1 : 0.45 }}>
+                          <span>Its own cover <span className="field-sub">{t.cover ? "" : "uses the default"}</span></span>
+                          <div className={"switch " + (t.cover ? "on" : "")} role="switch" aria-checked={!!t.cover}
+                            onClick={() => setTrack({ cover: t.cover ? "" : (cfg.music.coverUrl || "https://") })}><div className="knob" /></div>
+                        </div>
+                        {t.cover ? (
+                          <input className="input" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}
+                            value={t.cover} maxLength={500} placeholder="https://…r2.dev/cover-1.jpg"
+                            onChange={(e) => setTrack({ cover: e.target.value })} />
+                        ) : null}
                       </div>
                     </div>
                   );
                 })}
+
                 <div className="field-sub">
-                  Upload the audio to R2 and paste the public links. The player takes the
-                  gallery's own colours and glass, loops back to the first track after the
-                  last, and never starts on its own.
+                  Upload the audio to R2 and paste the public links. Title and artist can go in
+                  before the link — a row with no link yet simply isn't played. The player sits
+                  centred under the accent line below the gallery's name, counts which track it is
+                  on in its top-right corner, loops back to the first after the last, and never
+                  starts on its own — a page that makes noise when it opens is a page people close.
                 </div>
               </div>
             </div>
           </div>
         </div>
 
+        {/* ── ACCENT GRADIENTS ── */}
         <div className="glass">
           <div className="grp-head"><span className="grp-title">Accent gradients</span></div>
           <div className="ctl-stack">
@@ -2786,6 +3169,7 @@ function GalleryEditor() {
     </div>
   );
 }
+
 
 function UIEditor({ data, reload }) {
   const t = data.theme || {};
