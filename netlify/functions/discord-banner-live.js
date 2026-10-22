@@ -26,7 +26,10 @@ async function remember(body, userId) {
 async function lastGood(failure, userId) {
   try {
     const rec = await lastStore().get(LAST_KEY, { type: 'json' });
-    if (rec && rec.userId === userId && rec.body && rec.body.ok === true) return json(200, { ...rec.body, stale: true }, CACHED(60));
+    if (rec && rec.userId === userId && rec.body && rec.body.ok === true) {
+      const url = typeof rec.body.url === 'string' ? rec.body.url.replace(/([?&]size=)(?!(16|32|64|128|256|512|1024|2048|4096)\b)\d+/, '$11024') : rec.body.url;
+      return json(200, { ...rec.body, url, stale: true }, CACHED(60));
+    }
   } catch {}
   return failure;
 }
@@ -82,7 +85,11 @@ async function viaGallery(userId) {
       if (typeof v !== 'string') return '';
       try {
         const u = new URL(v);
-        return u.protocol === 'https:' && u.hostname === 'cdn.discordapp.com' && !u.username && !u.password && u.pathname.startsWith(prefix) ? u.href : '';
+        if (!(u.protocol === 'https:' && u.hostname === 'cdn.discordapp.com' && !u.username && !u.password && u.pathname.startsWith(prefix))) return '';
+        // Discord's CDN only takes power-of-two sizes; fix one that isn't.
+        const sz = Number(u.searchParams.get('size'));
+        if (u.searchParams.has('size') && !(sz >= 16 && sz <= 4096 && (sz & (sz - 1)) === 0)) u.searchParams.set('size', '1024');
+        return u.href;
       } catch { return ''; }
     };
     const dns = d.displayNameStyles;
@@ -134,7 +141,8 @@ async function viaBot(token, userId) {
 
     const banner = typeof u.banner === 'string' && u.banner ? u.banner : '';
     const url = banner
-      ? `https://cdn.discordapp.com/banners/${userId}/${banner}.${banner.startsWith('a_') ? 'gif' : 'png'}?size=600`
+      // size must be a power of two — Discord's CDN refuses anything else
+      ? `https://cdn.discordapp.com/banners/${userId}/${banner}.${banner.startsWith('a_') ? 'gif' : 'png'}?size=1024`
       : '';
     let accentColor = typeof u.accent_color === 'number' ? u.accent_color : null;
     if (accentColor === null && typeof u.banner_color === 'string' && /^#[0-9a-f]{6}$/i.test(u.banner_color)) {

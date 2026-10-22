@@ -2565,12 +2565,16 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
       if (d.theme && window.__applyNavTheme) window.__applyNavTheme(d.theme);
       // Same rule as the main page: the admin's favicon, else /favicon.png.
       const fav = d.features && typeof d.features.faviconUrl === 'string' ? d.features.faviconUrl.trim() : '';
-      const favHref = fav || '/favicon.png?v=3';
-      document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
-        if (l.getAttribute('href') === favHref) return;
-        const n = document.createElement('link'); n.rel = l.rel; n.href = favHref; l.replaceWith(n);
-      });
-      try { if (fav) localStorage.setItem('faviconCache', fav); else localStorage.removeItem('faviconCache'); } catch (e) {}
+      const setIcon = (href) => {
+        document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
+          if (l.getAttribute('href') === href) return;
+          const n = document.createElement('link'); n.rel = l.rel; n.href = href; l.replaceWith(n);
+        });
+        try { if (href !== '/favicon.png?v=3') localStorage.setItem('faviconCache', href); else localStorage.removeItem('faviconCache'); } catch (e) {}
+      };
+      // A custom favicon only if it really loads as an image.
+      if (fav) { const probe = new Image(); probe.onload = () => setIcon(fav); probe.onerror = () => setIcon('/favicon.png?v=3'); probe.src = fav; }
+      else setIcon('/favicon.png?v=3');
       if (typeof d.discordUserId === 'string' && /^\d{15,25}$/.test(d.discordUserId)) syncNavAvatar(d.discordUserId);
     })
     .catch(() => {});

@@ -226,7 +226,11 @@ const FEATURES_SPEC = {
   showDiscordPresence: (v) => bool(v, 'Discord Presence'),
   showViews: (v) => bool(v, 'Profile Views'),
   turnstileGate: (v) => bool(v, 'Cloudflare Turnstile Gate'),
-  faviconUrl: (v) => url(v, 'Favicon URL', { relative: true }),
+  faviconUrl: (v) => {
+    const u = url(v, 'Favicon URL', { relative: true });
+    if (/^https?:\/\/(www\.)?github\.com\//i.test(u)) fail('That\'s GitHub\'s page for the file, not the image itself. To use the favicon.png in the repo, leave this blank.');
+    return u;
+  },
   // Font for all public-site text except the display handle.
   siteFont: (v) => fontName(v, 'Site font'),
   siteFontUrl: (v) => url(v, 'Site font URL'),

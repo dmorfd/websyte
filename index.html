@@ -3059,7 +3059,7 @@ async function syncDiscordBanner() {
     window.__bannerShownFromCache = true;
     try {
       const cachedBanner = localStorage.getItem('discordBannerCache');
-      if (cachedBanner && window.__bannerAutoSync && /^https:\/\/cdn\.discordapp\.com\/banners\//.test(cachedBanner)) applyDiscordBanner({ url: cachedBanner });
+      if (cachedBanner && window.__bannerAutoSync && /^https:\/\/cdn\.discordapp\.com\/banners\//.test(cachedBanner)) applyDiscordBanner({ url: cachedBanner.replace(/([?&]size=)\d+/, '$11024') });
     } catch (e) {}
   }
   let failed = false;
@@ -4815,7 +4815,18 @@ function applyEnterScreen(es) {
 // own /favicon.png. Cached so the next visit's first paint already uses it.
 function applyFavicon(url) {
   // ?v=3: browsers remembered /favicon.png as missing from before the file existed.
-  const href = (typeof url === 'string' && url.trim()) ? url.trim() : '/favicon.png?v=3';
+  const DEFAULT = '/favicon.png?v=3';
+  const custom = (typeof url === 'string' && url.trim()) ? url.trim() : '';
+  // A custom favicon (Admin → Settings) only if it actually loads as an
+  // image; a dead or non-image link falls back to the site's own file.
+  if (custom) {
+    const probe = new Image();
+    probe.onload = () => setFavicon(custom);
+    probe.onerror = () => setFavicon(DEFAULT);
+    probe.src = custom;
+  } else setFavicon(DEFAULT);
+}
+function setFavicon(href) {
   // Swap in fresh <link>s: Chrome doesn't always notice an href edited in place.
   document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
     if (l.getAttribute('href') === href) return;

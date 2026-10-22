@@ -1024,6 +1024,16 @@ function useSiteIdentity() {
 }
 // The site favicon (Settings → Public Site Features), on the admin tab too.
 function applyAdminFavicon(url) {
+  if (url) {   // a custom favicon only if it really loads
+    const probe = new Image();
+    probe.onload = () => setAdminFavicon(url);
+    probe.onerror = () => setAdminFavicon("");
+    probe.src = url;
+    return;
+  }
+  setAdminFavicon("");
+}
+function setAdminFavicon(url) {
   const href = url || "/favicon.png?v=3";
   // Swap in fresh <link>s: Chrome doesn't always notice an href edited in place.
   document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => {
@@ -3895,6 +3905,45 @@ function UIEditor({ data, reload }) {
 // Paste an R2 image/GIF URL, then drag to reposition + zoom. Saves
 // {url, scale, posX, posY}; the public site applies them via CSS
 // (object-position + transform:scale) so GIFs keep animating.
+// What the live-banner check actually answers right now, in words — so a
+// missing banner says why (no token, no banner on the profile, Discord down…)
+// instead of just not appearing.
+function LiveBannerStatus({ autoSync }) {
+  const [st, setSt] = useState(null);
+  const check = useCallback(async () => {
+    setSt({ kind: "", text: "checking…" });
+    try {
+      const res = await fetch("/.netlify/functions/discord-banner-live", { cache: "no-store" });
+      const d = await res.json().catch(() => ({}));
+      let text, kind = "err", img = "";
+      if (d.ok === true && d.url) {
+        // Load it the way a visitor's browser will.
+        const loads = await new Promise((r) => { const i = new Image(); i.onload = () => r(true); i.onerror = () => r(false); i.src = d.url; setTimeout(() => r(false), 8000); });
+        if (loads) { kind = "ok"; text = "✓ live banner found" + (d.stale ? " (Discord is slow right now — showing the last one that worked)" : ""); img = d.url; }
+        else text = "✗ Discord gave a banner link, but the image won't load.";
+      } else if (d.ok === true) text = "No banner on the Discord profile (banners need Nitro) — the site shows the banner below, or the colour.";
+      else if (d.reason === "no-token") text = d.detail === "not-rostered"
+        ? "✗ No bot token here, and arandomperson.dev doesn't have this Discord ID on its gallery roster."
+        : "✗ No live source: set DISCORD_BOT_TOKEN on Netlify (or GALLERY_API), then redeploy.";
+      else if (d.reason === "bad-user-id") text = "✗ SITE_OWNER_DISCORD_ID / DISCORD_USER_ID isn't a numeric Discord ID.";
+      else if (d.reason === "discord-error") text = "✗ Discord refused the bot (HTTP " + d.status + ")" + (d.status === 401 ? " — the bot token is wrong or was reset." : ".");
+      else text = "✗ Couldn't reach Discord (" + (d.reason || ("HTTP " + res.status)) + ").";
+      setSt({ kind, text, img });
+    } catch (e) { setSt({ kind: "err", text: "✗ " + e.message }); }
+  }, []);
+  useEffect(() => { check(); }, [check]);
+  if (!st) return null;
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", opacity: autoSync ? 1 : 0.55 }}>
+      {st.img ? <img src={st.img} alt="" style={{ width: 90, height: 18, objectFit: "cover", borderRadius: 4 }} /> : null}
+      <div className="field-sub" style={{ flex: "1 1 220px", color: st.kind === "ok" ? "#5fd38d" : st.kind === "err" ? "#ff9aa8" : undefined }}>
+        {st.text}{!autoSync ? " (auto-sync is off, so the site uses the banner below)" : ""}
+      </div>
+      <button className="btn btn-tiny" onClick={check}>Check again</button>
+    </div>
+  );
+}
+
 function BannerCropper({ data, reload }) {
   const b = data.discordBanner || {};
   const [url, setUrl] = useState(b.url || "");
@@ -3990,6 +4039,7 @@ function BannerCropper({ data, reload }) {
             </div>
             <div className={"switch " + (autoSync ? "on" : "")} onClick={toggleAuto} role="switch" aria-checked={autoSync}><div className="knob" /></div>
           </div>
+          <LiveBannerStatus autoSync={autoSync} />
           <div className="ctl-row" style={{ flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 12, fontWeight: 500 }}>Empty-banner colour</div>
@@ -4789,6 +4839,7 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
   const [adminBgVideo, setAdminBgVideo] = useState(v.adminUrl || "");
   const [adminBgVideoEnabled, setAdminBgVideoEnabled] = useState(!!(v.adminUrl));
   const [favicon, setFavicon] = useState(f.faviconUrl || "");
+  const [favOk, setFavOk] = useState(true);   // does the box's link load as an image?
   const [faviconStatus, showFaviconStatus] = useSaveStatus();
   const [siteFont, setSiteFont] = useState(f.siteFont || "");
   const [siteFontUrl, setSiteFontUrl] = useState(f.siteFontUrl || "");
@@ -4998,11 +5049,19 @@ function SettingsPanel({ open, onClose, data, logout, reload }) {
             <div className="field-title">Favicon</div>
             <div className="field-sub">the icon in the browser tab, for the site and this admin. Paste an image URL (e.g. on R2: .png, .ico or .svg). Blank = the site's own /favicon.png</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-              <img src={favicon.trim() || "/favicon.png"} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "contain", background: "rgba(255,255,255,0.05)", flex: "0 0 auto" }} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} onLoad={(e) => { e.currentTarget.style.visibility = "visible"; }} />
+              <img src={favicon.trim() || "/favicon.png?v=3"} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "contain", background: "rgba(255,255,255,0.05)", flex: "0 0 auto" }} onError={(e) => { e.currentTarget.style.visibility = "hidden"; setFavOk(false); }} onLoad={(e) => { e.currentTarget.style.visibility = "visible"; setFavOk(true); }} />
               <input className="input" value={favicon} onChange={(e) => setFavicon(e.target.value)} placeholder="https://…r2.dev/favicon.png" maxLength={500} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }} />
             </div>
+            {!favOk ? (
+              <div className="field-sub" style={{ color: "#ff9aa8", marginTop: 6 }}>
+                {favicon.trim()
+                  ? "✗ This link doesn't load as an image, so the tab shows favicon.png instead. Leave it blank to use the favicon.png in the repo."
+                  : "✗ favicon.png isn't loading — check the file is in the repo's top folder, named exactly favicon.png."}
+              </div>
+            ) : null}
             <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 6 }}>
               <span className={"save-status " + faviconStatus.kind}>{faviconStatus.msg}</span>
+              {favicon.trim() ? <button className="btn btn-tiny" onClick={() => setFavicon("")}>Use favicon.png</button> : null}
               <button className="btn btn-primary btn-tiny" onClick={saveFavicon}>Save favicon</button>
             </div>
           </div>
