@@ -6034,15 +6034,17 @@ audio.addEventListener('play', () => fadeInAudio(typeof window.__audioFadeMs ===
 (function () {
   const isField = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
   document.addEventListener('contextmenu', (e) => { if (!isField(e.target)) e.preventDefault(); });
+  // e.code (the physical key), not e.key: on a Mac the inspector is
+  // Cmd+Option+I, and Option+I arrives as a dead-key circumflex in e.key.
+  // The same block runs on gallery.html; change one, change both.
   document.addEventListener('keydown', (e) => {
-    const k = (e.key || '').toLowerCase();
+    const code = e.code || '';
     const ctrl = e.ctrlKey || e.metaKey;
-    if (k === 'f12'
-      || (ctrl && e.shiftKey && (k === 'i' || k === 'j' || k === 'c'))
-      || (ctrl && !e.shiftKey && (k === 'u' || k === 's'))) {
-      e.preventDefault();
-    }
+    const inspect = ctrl && (e.shiftKey || e.altKey) && (code === 'KeyI' || code === 'KeyJ' || code === 'KeyC');
+    const source  = ctrl && !e.shiftKey && !e.altKey && (code === 'KeyU' || code === 'KeyS');
+    if (code === 'F12' || inspect || source) e.preventDefault();
   });
+  document.addEventListener('dragstart', (e) => { if (e.target && e.target.tagName === 'IMG') e.preventDefault(); });
 })();
 </script>
 </body>

@@ -46,8 +46,15 @@
         // cache because the real settings do not arrive until a fetch returns,
         // by which time the loading screen has been on display for a while.
         if (typeof __gt.__fontUrl === 'string' && __gt.__fontUrl && typeof __gt.__fontFamily === 'string' && __gt.__fontFamily) {
-          var __ext = (__gt.__fontUrl.split('.').pop() || '').toLowerCase().split(/[?#]/)[0];
-          var __fmt = { woff2: 'woff2', woff: 'woff', ttf: 'truetype', otf: 'opentype' }[__ext];
+          // Both stored, because the URL is a function call now and has no
+          // extension to read one off. Falling back to the old guess keeps a
+          // cache written by an older copy of this page working.
+          var __ext = typeof __gt.__fontExt === 'string' && __gt.__fontExt
+            ? __gt.__fontExt
+            : (__gt.__fontUrl.split('.').pop() || '').toLowerCase().split(/[?#]/)[0];
+          var __fmt = typeof __gt.__fontFmt === 'string' && __gt.__fontFmt
+            ? __gt.__fontFmt
+            : { woff2: 'woff2', woff: 'woff', ttf: 'truetype', otf: 'opentype' }[__ext];
           var __st = document.createElement('style');
           __st.id = 'galFontFace';
           __st.textContent = '@font-face{font-family:"' + __gt.__fontFamily + '";'
@@ -59,6 +66,15 @@
           __pre.crossOrigin = 'anonymous'; __pre.href = __gt.__fontUrl;
           document.head.appendChild(__pre);
         }
+        // And the door's wording and whether there is one at all. The gate is
+        // raised when the counting finishes, which can be before the settings
+        // fetch has answered — or instead of it, if that fetch fails. This is
+        // what this device saw last time, and it is better than a stock word
+        // the owner replaced months ago.
+        window.__galEnterCache = {
+          on: __gt.__enterOn !== false,
+          text: typeof __gt.__enterText === 'string' ? __gt.__enterText : '',
+        };
       }
     } catch (e) {}
   </script>
@@ -110,7 +126,6 @@
          has always drawn — a flat white hairline fading out — so a config that
          never touches it is unchanged. */
       --g-sec-line-img:linear-gradient(90deg, rgba(255,255,255,.14), transparent);
-      --g-sec-line-a:1;
       --nav-bg:13,4,8; --nav-accent:220,100,120; --nav-accent2:212,168,75; --nav-alpha:.9;
     }
 
@@ -134,7 +149,16 @@
     body.overlay-lock{overflow:hidden;}
     @media (max-width:640px){ body.nav-open{overflow:hidden;} }
     img{max-width:100%;}
-    button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;}
+    /* touch-action:manipulation is the other half of the slow ×. The page is
+       pinch- and double-tap-zoomable (deliberately — taking that away to fix
+       this would be a worse trade), so on iOS a tap on a button withholds its
+       click for about a third of a second while the browser waits to see
+       whether a second tap is coming. Declaring manipulation here says this
+       element is not a double-tap target, and the click fires on release.
+       index.html already does this on its player's buttons; the gallery's
+       never got it. Every button on the page, so the two ×s, the arrows, the
+       like and the send button all stop waiting. */
+    button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;touch-action:manipulation;}
     ::selection{background:var(--g-accent1);color:#fff;}
     input::placeholder,textarea::placeholder{color:rgba(243,236,228,.35);}
 
@@ -309,20 +333,32 @@
     }
     /* The trim. Inset from the corners so it reads as a highlight catching the
        top edge rather than as a second border. */
+    /* Two pixels, not one, and the colours hold from a fifth of the way
+       across to four fifths rather than from a third to two thirds. The pair
+       behind this line was always reaching the page — it is in the painted
+       gradient, and the e2e has read it out of the pseudo-element for as long
+       as the control has existed — but at a single pixel, inset, and
+       transparent at both ends, changing it was a change you had to go
+       looking for. A trim line you cannot see is indistinguishable from one
+       that is not wired up.
+       It still rides --gp-panel, so a player whose glass is turned down keeps
+       a trim turned down with it, and one at zero has no trim at all. That is
+       the other reason this control can look dead: at glass 0 the whole panel
+       is gone, this line included, and no colour will bring it back. */
     .g-player::before{
-      content:'';position:absolute;top:-1px;left:16px;right:16px;height:1px;pointer-events:none;
+      content:'';position:absolute;top:-1px;left:16px;right:16px;height:2px;pointer-events:none;
       opacity:var(--gp-panel);
-      background:linear-gradient(90deg, transparent, var(--gp-acc1) 30%, var(--gp-acc2) 70%, transparent);
+      background:linear-gradient(90deg, transparent, var(--gp-acc1) 20%, var(--gp-acc2) 80%, transparent);
     }
-    /* The glow it sits in. Behind everything, opacity-only so the breathing
-       while a track plays costs a composite and nothing else. */
-    .g-player::after{
-      content:'';position:absolute;inset:-1px;z-index:-1;border-radius:inherit;pointer-events:none;
-      background:radial-gradient(130% 150% at 12% 0%, color-mix(in oklch, var(--gp-c1) calc(26% * var(--gp-panel)), transparent), transparent 64%);
-      opacity:0;transition:opacity .6s ease;
-    }
-    .g-player.is-playing::after{opacity:1;animation:gpBreathe 5.4s ease-in-out infinite;}
-    @keyframes gpBreathe{0%,100%{opacity:.55;}50%{opacity:1;}}
+    /* THE PLAYER LOOKS THE SAME PLAYING AS IT DOES PAUSED.
+       There used to be a wash of --gp-c1 behind the panel that faded in while
+       a track ran and breathed on a 5.4s cycle. Through translucent glass it
+       tinted the whole panel, so pressing play changed the player's colour and
+       pressing pause changed it back — and it never quite settled in between.
+       It is gone. What a press changes now is the icon, the word in the
+       header and the ring, which is a reading of the state rather than a mood
+       lit behind it. The is-playing class is still set; nothing paints from
+       it. */
     /* With the page's glass switched off the panel is solid — but "solid" has
        to mean solid at the chosen opacity, not regardless of it, or turning the
        panel off here would quietly turn it back on. */
@@ -368,7 +404,11 @@
     .g-player-art{position:relative;width:46px;height:46px;flex:none;border-radius:3px;overflow:hidden;
       box-shadow:0 0 0 1px rgba(255,255,255,.08), 0 8px 22px -6px color-mix(in oklch, var(--gp-c1) 55%, transparent);}
     .g-player-art[hidden]{display:none;}
-    .g-player-cover{width:100%;height:100%;object-fit:cover;display:block;background:rgba(255,255,255,.04);}
+    /* The same three the other images carry. This trio, not the JS handler,
+       is what stops a long press on a phone: iOS raises its save sheet off
+       the touch callout, which never fires a contextmenu event to cancel. */
+    .g-player-cover{width:100%;height:100%;object-fit:cover;display:block;background:rgba(255,255,255,.04);
+      -webkit-user-drag:none;user-select:none;-webkit-touch-callout:none;}
     .g-player-mid{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px;}
     .g-player-title{
       font-family:var(--gp-font, 'Noto Serif JP',serif);
@@ -388,7 +428,9 @@
     }
     .g-player-byline{display:flex;align-items:center;gap:8px;min-width:0;}
     .g-player-dash{flex:none;width:7px;height:1px;background:var(--gp-c2);}
-    .g-player-artist{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--g-muted);
+    /* White, not the page's muted brown. At 9.5px with .18em of tracking the
+       muted colour was closer to absent than to quiet. */
+    .g-player-artist{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:#fff;
       overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
     .g-player-btns{display:flex;align-items:center;gap:2px;flex:none;}
@@ -424,8 +466,10 @@
       position:absolute;inset:-7px;border-radius:50%;pointer-events:none;opacity:.35;
       background:radial-gradient(circle, color-mix(in oklch, var(--gp-c1) 55%, transparent), transparent 70%);
     }
-    .g-player.is-playing .g-player-ringglow{animation:gpPulse 2.4s ease-in-out infinite;}
-    @keyframes gpPulse{0%,100%{opacity:.35;transform:scale(1);}50%{opacity:.7;transform:scale(1.12);}}
+    /* It used to pulse .35 to .7 while a track ran. That is the same
+       complaint as the panel's wash, a size down: a halo that brightens and
+       dims around the button is the colour changing on play and changing
+       back on pause. It sits still now. */
     /* width/height rather than the attributes on the element, so the ring
        follows whatever size the wrapper is at this breakpoint. */
     .g-player-ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);pointer-events:none;}
@@ -442,8 +486,13 @@
                  inset 0 -2px 5px rgba(0,0,0,.18);
       transition:transform .15s cubic-bezier(.2,.8,.25,1), box-shadow .22s, filter .22s;
     }
-    .g-player-play svg{display:block;transform:translateX(1px);}  /* optically centre the triangle */
-    .g-player-play[data-playing] svg{transform:none;}             /* the pause bars are symmetric */
+    /* NO NUDGE HERE. The triangle carries its own optical centring in its
+       path — its centroid sits on the middle of the 24-unit box — so the 1px
+       shove this rule used to add was a second correction on top of a glyph
+       that had already had one, and it put the ink 2.2px right of the disc's
+       centre while the pause bars sat dead on it. The glyph jumped sideways
+       every time the button was pressed. */
+    .g-player-play svg{display:block;}
     .g-player-play:active{transform:scale(.95);}
     @media (hover:hover){
       .g-player-play:hover{transform:scale(1.06);filter:brightness(1.04);
@@ -479,11 +528,9 @@
                  0 0 12px color-mix(in oklch, var(--gp-c2) 70%, transparent);
     }
 
-    /* The breathing glow and the pulsing ring are decoration; the colours and
-       the layout are not, so only the motion goes. */
+    /* Nothing on the player animates by itself any more, so this is down to
+       the transitions a press makes. */
     @media (prefers-reduced-motion: reduce){
-      .g-player.is-playing::after,
-      .g-player.is-playing .g-player-ringglow{animation:none;}
       .g-player-play, .g-player-btn{transition:none;}
       .g-player-ring .bar{transition:none;}
     }
@@ -530,9 +577,17 @@
       background:radial-gradient(72% 92% at 32% 50%, rgba(0,0,0,.42), transparent 82%);
       transition:opacity .45s ease;
     }
+    /* The hero's count — the number and the word SHOTS under it. BOTH plain
+       white, matching the section headings down the page.
+       They used to read var(--g-text) and var(--g-muted), which is why this
+       looked like a setting was overriding it: nothing was. Those two are the
+       page's text and muted colours, so the number came out warm off-white
+       and the word under it grey, and picking a theme preset moved the pair
+       to whatever that preset's text and muted happened to be. They were the
+       last two pieces of the heading block still reading the palette. */
     .g-stat{display:flex;flex-direction:column;gap:4px;}
-    .g-stat b{font-family:'Noto Serif JP',serif;font-size:40px;font-weight:600;line-height:1;color:var(--g-text);}
-    .g-stat span{font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.18em;color:var(--g-muted);text-transform:uppercase;}
+    .g-stat b{font-family:'Noto Serif JP',serif;font-size:40px;font-weight:600;line-height:1;color:#fff;}
+    .g-stat span{font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:.18em;color:#fff;text-transform:uppercase;}
 
     /* ── SECTIONS ── */
     /* ONE GAP, DECLARED ONCE, AND THE CONTAINER THAT ACTUALLY HOLDS THE
@@ -552,23 +607,31 @@
       display:flex;flex-direction:column;gap:var(--g-sec-gap);
     }
     #galSections{display:flex;flex-direction:column;gap:var(--g-sec-gap);}
-    .g-sec-head{display:flex;align-items:flex-end;gap:20px;margin-bottom:26px;flex-wrap:wrap;}
+    /* THE COUNT HAS COME OUT OF THE ROW.
+       It used to sit at the far right of the header, past the end of the rule,
+       which is the one place in the layout where the eye has no reason to
+       look. It is now a line of its own under the title and under the rule —
+       and because it is no longer competing for the row's width, the rule
+       itself gets the space it used to give away, and the narrow-phone wrap
+       that used to drop the count onto its own line by accident is now simply
+       the layout. */
+    .g-sec-head{display:flex;flex-direction:column;gap:9px;margin-bottom:26px;}
+    .g-sec-top{display:flex;align-items:flex-end;gap:20px;min-width:0;}
     .g-sec-num{font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--g-accent2);padding-bottom:8px;}
     .g-sec-names{display:flex;flex-direction:column;gap:6px;min-width:0;}
     .g-sec-jp{font-family:'Noto Serif JP',serif;font-size:13px;color:var(--g-accent1);letter-spacing:.12em;}
     .g-sec-jp:empty{display:none;}
-    .g-sec-name{margin:0;font-family:'Noto Serif JP',serif;font-weight:600;font-size:clamp(26px,3.4vw,40px);line-height:1.1;text-wrap:balance;}
+    .g-sec-name{margin:0;font-family:'Noto Serif JP',serif;font-weight:600;font-size:clamp(26px,3.4vw,40px);line-height:1.1;text-wrap:balance;color:#fff;}
     /* The rule that runs out beside each section's name. Its gradient is a
        whole value written from the settings rather than two colours plugged
        into a fixed shape, because the shape itself differs: left blank it is
        the flat white hairline the gallery has always drawn, and given a pair
        it becomes a gradient that fades out at the end, like the rule under the
-       heading. The strength is opacity, so a rule turned all the way down
-       still holds its place in the row and the count on the right does not
-       jump back against the title. */
-    .g-sec-line{flex:1 1 80px;height:1px;margin-bottom:14px;
-      opacity:var(--g-sec-line-a);background-image:var(--g-sec-line-img);}
-    .g-sec-count{font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:.16em;color:var(--g-muted);padding-bottom:8px;text-transform:uppercase;}
+       heading. min-width so that a long section name on a narrow screen
+       shrinks the rule rather than erasing it. */
+    .g-sec-line{flex:1 1 60px;min-width:34px;height:1px;margin-bottom:14px;
+      background-image:var(--g-sec-line-img);}
+    .g-sec-count{font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:.16em;color:#fff;text-transform:uppercase;}
 
     .g-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(min(100%, var(--g-tile-min)), 1fr));gap:clamp(14px,1.6vw,22px);}
     .g-tile{
@@ -614,14 +677,30 @@
        the other. */
     .g-cap-by{display:flex;align-items:center;gap:7px;min-width:0;}
     .g-cap-by img{width:18px;height:18px;border-radius:50%;flex:0 0 18px;object-fit:cover;}
-    .g-cap-by span{font-size:11.5px;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    /* A PHOTOGRAPHER'S NAME IS A DISCORD NAME.
+       Same face, same weight and the same clipped-gradient treatment as the
+       Discord card on the main site, so the two pages credit the same people
+       the same way. The colours here are the FALLBACK — the gallery's comment
+       accent, which is what these lines have always worn. When Discord has a
+       display-name style for that person, the JS paints their real colours
+       over the top; see applyNameStyle. */
+    .g-cap-by span{font-family:'DM Sans',sans-serif;font-weight:600;font-size:11.5px;letter-spacing:.005em;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
       background-image:linear-gradient(90deg,var(--acc-cmt-1),var(--acc-cmt-2));
+      background-size:200% auto;
       -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;}
     /* The expanded view has room for a face and a full name. */
     .lb-by{display:flex;align-items:center;gap:9px;margin-top:2px;}
-    .lb-by-name{font-size:13px;font-weight:600;
+    .lb-by-name{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;letter-spacing:.005em;
       background-image:linear-gradient(90deg,var(--acc-cmt-1),var(--acc-cmt-2));
+      background-size:200% auto;
       -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;}
+    /* The sweep Discord gives an iridescent name. Identical to the main
+       site's dnShimmer, deliberately — one name, two pages, one animation. */
+    @keyframes gNameShimmer{0%{background-position:0% center;}100%{background-position:-200% center;}}
+    @media (prefers-reduced-motion: reduce){
+      .g-cap-by span, .lb-by-name{animation:none!important;}
+    }
     .lb-by-label{font-family:'Share Tech Mono',monospace;font-size:10.5px;letter-spacing:.14em;
       text-transform:uppercase;color:var(--g-muted);}
     .g-counts{display:flex;align-items:center;gap:12px;}
@@ -666,6 +745,117 @@
     .g-loader-track{width:100%;height:2px;margin-top:16px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;}
     .g-loader-fill{height:100%;width:0%;background:var(--g-accent1);transition:width .25s cubic-bezier(.4,0,.2,1);}
     .g-loader-nums{width:100%;display:flex;justify-content:space-between;font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:.14em;color:var(--g-muted);text-transform:uppercase;}
+
+    /* ── THE DOOR ──
+       The main site's classic intro, brought across: a gradient panel with one
+       line of text breathing in the middle of it, waiting to be clicked. It
+       comes up when the counting is done, and the click that dismisses it is
+       the whole point — a phone refuses to play audio outside a real gesture,
+       so the gate is what lets the sound player start at all.
+       Above everything, 600: the full-screen photograph is 500 and the nav
+       burger is 300, and the burger already floats over the loading screen
+       today. Nothing should be reachable in front of a door. */
+    .g-enter{
+      position:fixed;inset:0;z-index:600;
+      display:flex;align-items:center;justify-content:center;
+      background:#000;cursor:pointer;overflow:hidden;
+      /* The main site's own number. Everything in this block is its
+         #enterScreen, value for value, so the same settings draw the same
+         door on both. */
+      transition:opacity .6s ease;
+    }
+    .g-enter[hidden]{display:none;}
+    .g-enter.done{opacity:0;pointer-events:none;}
+    /* The state the door is in for ONE frame, so the transition above has an
+       opacity to run from. Without it the gate would snap on over the loading
+       screen rather than fading up in front of it. See showEnter(). */
+    .g-enter.arriving{opacity:0;}
+    .g-enter::before{
+      content:'';position:absolute;inset:0;pointer-events:none;
+      background:var(--g-enter-grad, linear-gradient(135deg, rgba(10,7,14,.6), rgba(0,0,0,.95)));
+    }
+    /* ── THE CORNERS ──
+       Four brackets around the WORD — crop marks on the label, not a frame
+       around the viewport. The same L-shapes-from-two-borders idiom the hero
+       card and the sound player use.
+       They hang off a wrapper that shrinks to the button, so they follow the
+       label wherever the owner's wording and text size put it rather than
+       being positioned against anything. The button's own 1rem/2rem padding
+       is what holds them off the letters, and that padding is the main site's
+       number, so the gap is theirs too.
+       The breathing moved here from the label: a static frame around a word
+       fading in and out reads as the word slipping out of its own frame.
+       Marks sized off the same expression as the text, so 250% text does not
+       end up inside 16px brackets.
+       pointer-events:none: a visitor who aims at a bracket has still clicked
+       the door. */
+    .g-enter-door{
+      position:relative;z-index:2;display:inline-flex;
+      --g-enter-mark:calc(1.4rem * var(--g-enter-scale, 1) * .72);
+      animation:gEnterFade 3s ease-in-out infinite;
+    }
+    .g-enter-corner{
+      position:absolute;width:var(--g-enter-mark);height:var(--g-enter-mark);
+      border-color:rgba(255,235,235,.4);border-style:solid;border-width:0;
+      pointer-events:none;transition:border-color .2s ease;
+    }
+    .g-enter-corner.tl{top:0;left:0;border-top-width:1px;border-left-width:1px;}
+    .g-enter-corner.tr{top:0;right:0;border-top-width:1px;border-right-width:1px;}
+    .g-enter-corner.bl{bottom:0;left:0;border-bottom-width:1px;border-left-width:1px;}
+    .g-enter-corner.br{bottom:0;right:0;border-bottom-width:1px;border-right-width:1px;}
+    /* A real button, not the bare clickable overlay the main site uses: that
+       one cannot be reached by keyboard at all, and a door only a mouse can
+       open is a door some visitors cannot. */
+    .g-enter-text{
+      position:relative;
+      background:none;border:0;cursor:pointer;
+      /* The door's OWN face, and 'Noto Serif JP' when nothing is set — which
+         is exactly what the main site's .enter-text is pinned to, so an
+         untouched gallery draws site A's door character for character.
+         Deliberately not var(--g-title-font): the gallery's display face
+         belongs to the page on the other side of the door, and inheriting it
+         here would mean a gate nobody chose. Set a file in the Enter Screen
+         card and this is the one place it is used. */
+      font-family:var(--g-enter-font, 'Noto Serif JP',serif);
+      font-size:calc(1.4rem * var(--g-enter-scale, 1));
+      letter-spacing:.18em;color:rgba(255,235,235,.85);
+      text-align:center;padding:1rem 2rem;
+      text-shadow:0 0 20px rgba(255,200,210,.25);
+      /* The pulse lives on .g-enter-door now, so the word and its brackets
+         breathe as one object. */
+      user-select:none;-webkit-tap-highlight-color:transparent;
+      /* Hidden until the owner's wording has arrived, so the stock word never
+         flashes and is replaced. There is a timer that shows it anyway if the
+         settings never come. */
+      visibility:hidden;
+    }
+    .g-enter-text.ready{visibility:visible;}
+    /* The gate takes focus when it appears, because the page behind it is
+       still full of focusable things and a keyboard would otherwise tab
+       straight into a page nobody can see.
+       :focus-visible is NOT enough on its own here. Focus is moved by script
+       rather than by the visitor, and a browser treats script focus on a page
+       nobody has touched yet as keyboard focus — so the ring was drawn for
+       everybody, and at this size a rounded outline around one word reads as
+       a button on a form rather than as a door. So it is armed by an actual
+       key press instead; see the keydown handler beside showEnter().
+       And when it is armed, what shows is the brackets coming up bright
+       rather than a second box drawn around the first. The corners sit AFTER
+       the button in the markup for exactly this — a sibling combinator only
+       looks forwards. */
+    .g-enter-text:focus,
+    .g-enter-text:focus-visible{outline:none;}
+    .g-enter.keyed .g-enter-text:focus-visible ~ .g-enter-corner{border-color:rgba(255,245,245,.95);}
+    @keyframes gEnterFade{0%,100%{opacity:.45;}50%{opacity:1;}}
+    @media (max-width:560px){
+      .g-enter-text{font-size:calc(1.1rem * var(--g-enter-scale, 1));letter-spacing:.14em;}
+      .g-enter-door{--g-enter-mark:calc(1.1rem * var(--g-enter-scale, 1) * .72);}
+    }
+    @media (prefers-reduced-motion: reduce){
+      .g-enter-door{animation:none;opacity:1;}
+      .g-enter-corner{transition:none;}
+      .g-enter{transition:none;}
+    }
 
     /* ══════════ NAV DRAWER ══════════ */
     .nav-burger{
@@ -790,8 +980,23 @@
     .lb-full.open{animation:gFade .22s ease both;}
     .lb-full.open img{animation:lbFullIn .34s cubic-bezier(.2,.9,.25,1) both;}
     @keyframes lbFullIn{from{opacity:0;transform:scale(.86);}to{opacity:1;transform:none;}}
-    .lb-full.closing{animation:gFade .2s ease both reverse;}
-    .lb-full.closing img{animation:lbFullIn .2s cubic-bezier(.4,0,.6,1) both reverse;}
+    /* THE WAY OUT IS ITS OWN ANIMATION, NOT THE WAY IN PLAYED BACKWARDS.
+       It used to be `gFade … reverse` — the same animation-name that was
+       already running on this element and had finished long ago. Changing only
+       the direction does not restart an animation; the browser re-read the
+       finished one's fill with the direction flipped and snapped to zero on
+       the next frame. So the close never animated, and the 210ms timer behind
+       it was guarding nothing — except the visitor's next press, which it ate,
+       because an element at opacity 0 with display:flex still takes clicks.
+       That was the delay on the way out: press × to leave the photograph,
+       press × again to leave the image, and the second press landed on a sheet
+       of glass that was no longer there. Distinct names, so they run; short,
+       so leaving is quick; pointer-events:none, so nothing is swallowed even
+       if the timing ever drifts again. */
+    .lb-full.closing{pointer-events:none;animation:lbFullOut .12s ease both;}
+    .lb-full.closing img{animation:lbFullImgOut .12s cubic-bezier(.4,0,1,1) both;}
+    @keyframes lbFullOut{from{opacity:1;}to{opacity:0;}}
+    @keyframes lbFullImgOut{from{opacity:1;transform:none;}to{opacity:0;transform:scale(.94);}}
     .lb-full-close{
       position:fixed;top:clamp(14px,2.5vw,26px);right:clamp(14px,2.5vw,26px);z-index:2;
       width:46px;height:46px;border-radius:13px;cursor:pointer;
@@ -944,7 +1149,7 @@
     </div>
 
     <div class="g-player-top">
-      <span class="g-player-art" id="galPlayerArt"><img class="g-player-cover" id="galPlayerCover" alt="" /></span>
+      <span class="g-player-art" id="galPlayerArt"><img class="g-player-cover" id="galPlayerCover" alt="" draggable="false" /></span>
       <div class="g-player-mid">
         <div class="g-player-title" id="galPlayerTitle"></div>
         <div class="g-player-byline">
@@ -972,7 +1177,7 @@
             <!-- The id is on the PATH, because that is what carries `d`. It used
                  to be on the <svg>, where setting `d` is silently ignored — so
                  the disc showed a triangle the whole time something was playing. -->
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path id="galPlayerIcon" d="M8.5 4.5v15L20 12z"/></svg>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path id="galPlayerIcon" d="M8.25 4.5v15L19.5 12z"/></svg>
           </button>
         </span>
         <button class="g-player-btn skip" id="galPlayerFwd" type="button" aria-label="Forward ten seconds">
@@ -1017,7 +1222,7 @@
   <div class="lb" role="dialog" aria-modal="true" aria-label="Photo" id="lb">
     <div class="lb-stage">
       <div class="lb-frame">
-        <img id="lbImg" alt=""/>
+        <img id="lbImg" alt="" draggable="false"/>
         <button class="lb-expand" id="lbExpand" type="button" aria-label="View full screen">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
         </button>
@@ -1080,7 +1285,7 @@
 <!-- FULL SCREEN — a layer of its own above the expanded view, so the photo can
      grow without fighting the frame's rounding, shadow and scrolling column. -->
 <div class="lb-full" id="lbFull" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Photograph, full screen">
-  <img id="lbFullImg" alt=""/>
+  <img id="lbFullImg" alt="" draggable="false"/>
   <button class="lb-full-close" id="lbFullClose" type="button" aria-label="Leave full screen">×</button>
   <span class="lb-full-hint">esc or click to close</span>
 </div>
@@ -1092,9 +1297,21 @@
     <span class="g-loader-t" id="gLoaderTitle">Gallery</span>
     <div class="g-loader-track"><div class="g-loader-fill" id="gLoadFill"></div></div>
     <div class="g-loader-nums">
-      <span>Loading <span id="gLoadN">00</span> / <span id="gLoadT">00</span></span>
+      <span>Loading <span id="gLoadN">00</span> / <span id="gLoadT">10</span></span>
       <span id="gLoadPct">0%</span>
     </div>
+  </div>
+</div>
+
+<!-- ENTER. Hidden until the loading screen has finished counting, and left
+     hidden entirely when the owner has the gate switched off. -->
+<div class="g-enter" id="gEnter" hidden aria-hidden="true">
+  <div class="g-enter-door">
+    <button class="g-enter-text" id="gEnterText" type="button">enter</button>
+    <span class="g-enter-corner tl" aria-hidden="true"></span>
+    <span class="g-enter-corner tr" aria-hidden="true"></span>
+    <span class="g-enter-corner bl" aria-hidden="true"></span>
+    <span class="g-enter-corner br" aria-hidden="true"></span>
   </div>
 </div>
 
@@ -1157,21 +1374,43 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
     // extension, because a browser that cannot guess the format silently
     // refuses the face and you get the fallback with no error anywhere.
     const FALLBACK = "'Noto Serif JP',serif";
+    // ── ONE ADDRESS FOR A FONT, WHICHEVER SITE IS ASKING ──
+    // The config is shared, so both galleries are told to use the same file —
+    // but being told is not being able. A font is the one resource a browser
+    // refuses cross-origin unless its host says otherwise, and the config also
+    // accepts a root-relative path, which each site resolves against its own
+    // domain and therefore means a different file on each. Both end the same
+    // way: the owner who set it sees their font and the other one sees the
+    // fallback.
+    // So the face is fetched through the shared API instead, which reads the
+    // same config, fetches the bytes server-side where CORS does not apply,
+    // and hands them to anyone. `v` is a token off the URL itself, so picking
+    // a new font is a new address and the old one can be cached for good.
+    const stamp = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
+    const fontSrc = (slot, url) => GALLERY_API + '/gallery-font?k=' + slot + '&v=' + stamp(url);
     if (t.fontUrl) {
       const fam = (t.fontName || (t.fontUrl.split('/').pop() || 'Gallery').replace(/\.[a-z0-9]+$/i, '')).replace(/[^A-Za-z0-9 _-]/g, '') || 'GalleryTitle';
       const ext = (t.fontUrl.split('.').pop() || '').toLowerCase().split(/[?#]/)[0];
       const fmt = { woff2: 'woff2', woff: 'woff', ttf: 'truetype', otf: 'opentype' }[ext];
       let tag = document.getElementById('galFontFace');
       if (!tag) { tag = document.createElement('style'); tag.id = 'galFontFace'; document.head.appendChild(tag); }
+      const src = fontSrc('title', t.fontUrl);
       tag.textContent = '@font-face{font-family:"' + fam + '";'
-        + 'src:url("' + t.fontUrl.replace(/"/g, '%22') + '")' + (fmt ? ' format("' + fmt + '")' : '') + ';'
+        + 'src:url("' + src.replace(/"/g, '%22') + '")' + (fmt ? ' format("' + fmt + '")' : '') + ';'
         + 'font-display:swap;font-weight:100 900;}';
       set('--g-title-font', '"' + fam + '",' + FALLBACK);
       // Cached alongside the colours so the NEXT visit can inject this face
       // before first paint, instead of the loading screen wearing the fallback
       // until a fetch returns. Not a CSS variable, hence the __ prefix.
       cache.__fontFamily = fam;
-      cache.__fontUrl = t.fontUrl;
+      cache.__fontUrl = src;
+      // The format hint travels with it now. It used to be read back off the
+      // URL's extension, and the URL no longer has one — it is a query string
+      // on a function. A browser that cannot guess a font's format refuses the
+      // face silently, so losing this would have meant the replayed face never
+      // loading and no error anywhere to say why.
+      cache.__fontFmt = fmt || '';
+      cache.__fontExt = ext || '';
       // The face is only fetched once something asks for it, and the loading
       // screen's five seconds are long enough to cover that — but only if we
       // actually wait. window.__galleryFontReady is what the loader awaits.
@@ -1185,6 +1424,7 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
       if (tag) tag.textContent = '';
       set('--g-title-font', FALLBACK);
       delete cache.__fontFamily; delete cache.__fontUrl;
+      delete cache.__fontFmt; delete cache.__fontExt;
       window.__galleryFontReady = Promise.resolve();
     }
 
@@ -1219,8 +1459,9 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
       const fmt = { woff2: 'woff2', woff: 'woff', ttf: 'truetype', otf: 'opentype' }[ext];
       let tag = document.getElementById(opt.tagId);
       if (!tag) { tag = document.createElement('style'); tag.id = opt.tagId; document.head.appendChild(tag); }
+      const src = fontSrc(opt.slot, f.url);
       tag.textContent = '@font-face{font-family:"' + fam + '";'
-        + 'src:url("' + f.url.replace(/"/g, '%22') + '")' + (fmt ? ' format("' + fmt + '")' : '') + ';'
+        + 'src:url("' + src.replace(/"/g, '%22') + '")' + (fmt ? ' format("' + fmt + '")' : '') + ';'
         + 'font-display:swap;font-weight:100 900;}';
       set(opt.varName, '"' + fam + '",' + FALLBACK);
       try {
@@ -1232,7 +1473,7 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
 
     const imgReady = hostFont({
       font: cfg.imageFont, tagId: 'galImgFontFace', varName: '--g-img-font',
-      suffix: 'Img', fallbackName: 'GalleryImage', probe: '600 15px "%s"',
+      suffix: 'Img', fallbackName: 'GalleryImage', probe: '600 15px "%s"', slot: 'image',
     });
     // The player keeps its font under fontUrl/fontName rather than url/name,
     // because `music` is a settings group of its own and `url` there would
@@ -1242,12 +1483,25 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
     const trkReady = hostFont({
       font: { url: mFont.fontUrl, name: mFont.fontName },
       tagId: 'galTrkFontFace', varName: '--gp-font',
-      suffix: 'Trk', fallbackName: 'GalleryTrack', probe: '800 24px "%s"',
+      suffix: 'Trk', fallbackName: 'GalleryTrack', probe: '800 24px "%s"', slot: 'track',
     });
-    // The loading screen waits on ALL THREE faces, so the first sight of the
-    // page is not text changing typeface under the visitor.
+    // And the door's. Its own face rather than the heading's — see the note on
+    // .g-enter-text. Not replayed from the boot cache either: the gate is
+    // raised when the counting finishes, and the settings have arrived long
+    // before that on any load where there are settings to arrive. When the
+    // fetch fails outright there is no font to know about and the door wears
+    // Noto Serif JP, which is the main site's own gate.
+    const eFont = (cfg.enter && typeof cfg.enter === 'object') ? cfg.enter : {};
+    const entReady = hostFont({
+      font: { url: eFont.fontUrl, name: eFont.fontName },
+      tagId: 'galEntFontFace', varName: '--g-enter-font',
+      suffix: 'Ent', fallbackName: 'GalleryEnter', probe: '400 32px "%s"', slot: 'enter',
+    });
+    // The loading screen waits on ALL FOUR faces, so the first sight of the
+    // page — and of the door in front of it — is not text changing typeface
+    // under the visitor.
     const titleReady = window.__galleryFontReady || Promise.resolve();
-    window.__galleryFontReady = Promise.all([titleReady, imgReady, trkReady]).catch(() => {});
+    window.__galleryFontReady = Promise.all([titleReady, imgReady, trkReady, entReady]).catch(() => {});
 
     set('--g-title-c1', t.c1 || '#d7263d');
     set('--g-title-c2', t.c2 || '#e3b04b');
@@ -1343,8 +1597,10 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
       el.style.removeProperty('--g-sec-line-img');
       delete cache['--g-sec-line-img'];
     }
-    set('--g-sec-line-a',
-      (Math.max(0, Math.min(100, typeof cfg.sectionLine === 'number' ? cfg.sectionLine : 100)) / 100).toFixed(3));
+    // There is no strength any more. A rule you can fade to nothing is two
+    // controls for one decision — the colours already say what it looks like,
+    // and "invisible" is what leaving them blank and picking a transparent
+    // pair would do anyway.
 
     set('--g-tile-min', cfg.density === 'compact' ? '210px' : '290px');
     set('--g-glass', cfg.tileGlass === false ? '1' : '.55');
@@ -1385,6 +1641,32 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
       // colour of would just be muddying their own setting.
       tint.classList.remove('on');
     }
+
+    // ── THE DOOR ──
+    // Its look goes into the cache alongside the colours, and for the same
+    // reason: the gate is on screen before any fetch returns, so the wording
+    // and the wash this device saw last time are what it should be wearing on
+    // the first frame rather than the stock ones swapped out a moment later.
+    // Deliberately NOT theme-owned, unlike every colour above. The enter
+    // screen is the door in front of the gallery rather than part of it, and
+    // the main site treats its own the same way — the owner picks it whatever
+    // palette is in force.
+    const en = (cfg.enter && typeof cfg.enter === 'object') ? cfg.enter : {};
+    const enterOn = en.enabled !== false;
+    // THE MAIN SITE'S RECIPE, CHARACTER FOR CHARACTER.
+    // `linear-gradient(<a>deg,<c1>b3,<c2>f2)` — the alphas baked on as hex
+    // suffixes, b3 being .702 and f2 being .949. Written the same way rather
+    // than converted to rgba() with .7 and .95, because "near enough" between
+    // two copies of one screen is how they drift apart.
+    const eHex = (v, d) => (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : d);
+    const eg1 = eHex(en.gradColor1, '#3c0a1e');
+    const eg2 = eHex(en.gradColor2, '#000000');
+    const eAng = (typeof en.gradAngle === 'number' && en.gradAngle >= 0 && en.gradAngle <= 360) ? en.gradAngle : 135;
+    set('--g-enter-grad', 'linear-gradient(' + eAng + 'deg,' + eg1 + 'b3,' + eg2 + 'f2)');
+    set('--g-enter-scale', (Math.max(50, Math.min(250, typeof en.textScale === 'number' ? en.textScale : 100)) / 100).toFixed(2));
+    cache.__enterOn = enterOn;
+    cache.__enterText = (typeof en.text === 'string' && en.text.trim()) ? en.text.trim().slice(0, 100) : 'enter';
+    if (window.__setGalleryEnter) window.__setGalleryEnter(enterOn, cache.__enterText);
 
     try { localStorage.setItem('galleryThemeCache', JSON.stringify(cache)); } catch (e) {}
     el.classList.add('theme-ready');
@@ -1703,8 +1985,40 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
     }
     const n = document.createElement('span');
     n.textContent = owner.name;
+    applyNameStyle(n, owner.nameStyle);
     by.appendChild(n);
     return by;
+  }
+
+  // ── A DISCORD DISPLAY-NAME STYLE ──
+  // The same function the main site runs on its profile card, on a name it
+  // has rather than on a name it fetched: the colours arrive with the
+  // catalogue, worked out server-side so nobody's Discord id has to be
+  // published to look them up. One colour is a solid; several are the
+  // iridescent sweep, palindromed so it can scroll without a seam.
+  //
+  // No style is not a failure — plenty of people have none. The element then
+  // keeps the gradient the stylesheet gives it, which is the gallery's own
+  // comment accent and what these lines wore before any of this existed.
+  function applyNameStyle(el, style){
+    if (!el) return;
+    const cols = (style && Array.isArray(style.colors)) ? style.colors.filter(
+      (c) => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)) : [];
+    if (!cols.length) return;
+    if (cols.length === 1) {
+      el.style.setProperty('background-image', 'none');
+      el.style.setProperty('-webkit-text-fill-color', cols[0]);
+      el.style.setProperty('color', cols[0]);
+    } else {
+      const ring = cols.concat(cols.slice(0, -1).reverse());
+      el.style.setProperty('background-image', 'linear-gradient(90deg,' + ring.join(',') + ')');
+      el.style.setProperty('background-size', '200% auto');
+      el.style.setProperty('animation', 'gNameShimmer 6s linear infinite');
+    }
+    // 4 is Neon. Anything else just wears its colours.
+    if (style.effect === 4) {
+      el.style.setProperty('text-shadow', '0 0 8px ' + cols[0] + ', 0 0 16px ' + cols[cols.length - 1]);
+    }
   }
 
   function refreshTileCounts(entry){
@@ -1735,6 +2049,9 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
 
       const wrap = document.createElement('section'); wrap.className = 'g-section';
       const head = document.createElement('div'); head.className = 'g-sec-head';
+      // The number, the name and the rule share a row; the count goes beneath
+      // the pair of them.
+      const top = document.createElement('div'); top.className = 'g-sec-top';
 
       const num = document.createElement('span'); num.className = 'g-sec-num'; num.textContent = pad(si + 1);
       const names = document.createElement('div'); names.className = 'g-sec-names';
@@ -1745,7 +2062,8 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
       const cnt = document.createElement('span'); cnt.className = 'g-sec-count';
       cnt.textContent = pad(mine.length) + ' screenshots';
 
-      head.appendChild(num); head.appendChild(names); head.appendChild(line); head.appendChild(cnt);
+      top.appendChild(num); top.appendChild(names); top.appendChild(line);
+      head.appendChild(top); head.appendChild(cnt);
       wrap.appendChild(head);
 
       const grid = document.createElement('div'); grid.className = 'g-grid';
@@ -1802,6 +2120,78 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
     revealWaiting.splice(0).forEach((fn) => { try { fn(); } catch (e) {} });
   };
 
+  // ════ THE DOOR ════
+  // When the gate is on, the all-clear above is not fired by the loading
+  // screen any more — it is fired by the visitor's click on this. That is the
+  // entire reason the gate exists: iOS will not play audio outside a user
+  // gesture, and this turns "try it and hope" into a press.
+  //
+  // THE ONE THING THAT MUST NOT CHANGE HERE: announceReveal() is called
+  // DIRECTLY in the click listener, before the fade, before any timer. The
+  // chain from the press to audio.play() has to stay synchronous or the
+  // browser stops seeing it as a gesture — and it would still work on a
+  // desktop, so the failure would only ever show up on a phone.
+  const enterEl = document.getElementById('gEnter');
+  const enterBtn = document.getElementById('gEnterText');
+  const enterCache = window.__galEnterCache || {};
+  let enterOn = enterCache.on !== false;
+  if (enterBtn && enterCache.text) enterBtn.textContent = enterCache.text;
+
+  // Settings, when they arrive, overrule the cache.
+  window.__setGalleryEnter = function (on, text) {
+    enterOn = !!on;
+    if (enterBtn && text) enterBtn.textContent = text;
+  };
+
+  // The door comes up OVER the loading screen, which stays fully lit behind it
+  // until the door is opaque — see finishLoading(). The gate sits at 600 and
+  // the loader at 100, so through the whole handover there is always something
+  // opaque between the visitor and the gallery.
+  //
+  // The two-step unhide is load-bearing. `hidden` is display:none, and a
+  // transition cannot run from a box that was not being laid out — so the gate
+  // is unhidden AT opacity 0, that state is forced to be painted, and only
+  // then does the class come off.
+  const showEnter = () => {
+    if (!enterEl || !enterBtn) { announceReveal(); return; }
+    enterEl.classList.add('arriving');
+    enterEl.hidden = false;
+    enterEl.setAttribute('aria-hidden', 'false');
+    void enterEl.offsetWidth;                // flush the opacity:0 to the screen
+    enterEl.classList.remove('arriving');
+    enterBtn.classList.add('ready');
+    try { enterBtn.focus({ preventScroll: true }); } catch (e) { try { enterBtn.focus(); } catch (e2) {} }
+  };
+
+  if (enterEl && enterBtn) {
+    const pass = () => {
+      announceReveal();                       // first, and synchronously
+      enterEl.classList.add('done');
+      enterEl.setAttribute('aria-hidden', 'true');
+      setTimeout(() => { enterEl.hidden = true; }, 600);   // the fade's own length
+    };
+    enterBtn.addEventListener('click', pass);
+    // A visitor using the keyboard has to be able to see where they are, and
+    // everybody else should see a door rather than a form control. A real key
+    // press is what tells the two apart — script focus does not, see the CSS.
+    // Tab is held on the button because the gate is the only thing on screen:
+    // behind it is a page the visitor has not been shown yet, and tabbing into
+    // one of its links is a worse answer than staying put.
+    enterEl.addEventListener('keydown', (e) => {
+      enterEl.classList.add('keyed');
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        try { enterBtn.focus({ preventScroll: true }); } catch (err) {}
+      }
+    });
+    // The panel around the button is a target too, the way the main site's is
+    // — the button is for keyboards, not a smaller place to aim.
+    enterEl.addEventListener('click', (e) => { if (e.target !== enterBtn) pass(); });
+    // If the settings never arrive the label would stay invisible for ever,
+    // so it is shown anyway. The same guard the main site carries.
+    setTimeout(() => { enterBtn.classList.add('ready'); }, 1500);
+  }
+
   // ════ THE PLAYER ════
   // Four tracks at most, looping round. It tries to start on arrival when the
   // owner has asked it to — see armAutoplay below for what "tries" means, and
@@ -1829,7 +2219,12 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
     const fwdB   = document.getElementById('galPlayerFwd');
     if (!root) return;
 
-    const PLAY = 'M8.5 4.5v15L20 12z';
+    // A triangle looks centred when its CENTRE OF MASS is centred, not when
+    // its bounding box is — the mass is all up against the flat edge and the
+    // far side is a point. (8.25,4.5) (8.25,19.5) (19.5,12) averages to
+    // exactly (12,12), the middle of the 24-unit box, so the glyph needs no
+    // help from CSS. The pause bars are symmetric and centre themselves.
+    const PLAY = 'M8.25 4.5v15L19.5 12z';
     const PAUSE = 'M6 5h4v14H6zm8 0h4v14h-4z';
     // 2πr for r=30, which is what the ring's stroke-dasharray is set to. Kept
     // here rather than read back off the element so the two cannot drift.
@@ -2137,12 +2532,16 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
       // Cueing the first track is what fetches its headers, and therefore what
       // puts a real length on the right-hand clock before anyone presses play.
       if (here >= 0) paint(); else load(at, false);
-      // Asked for once there is something to play AND the loading screen has
-      // gone — see the curtain's all-clear above. armAutoplay is idempotent,
-      // so a later settings refresh re-pointing the player does not try a
-      // second time, and a refresh that arrives after the reveal fires
-      // immediately rather than waiting for a signal already given.
-      if (m.autoplay !== false) whenRevealed(armAutoplay);
+      // Asked for once there is something to play AND the way in has been
+      // opened — see the curtain's all-clear above. With the enter gate on,
+      // that all-clear comes from the visitor's click, which is a real user
+      // gesture and so is the one thing a phone will accept. With the gate
+      // off it comes from the loading screen lifting, and armAutoplay goes
+      // back to asking and taking no for an answer.
+      //
+      // There is no "start on arrival" switch guarding this any more. The
+      // gate answered the question the switch was asking.
+      whenRevealed(armAutoplay);
     };
   })();
 
@@ -2150,14 +2549,28 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
   const MIN_LOAD_MS = 5000;
   const MAX_LOAD_MS = 20000;
 
+  // ONE NUMBER, READ OUT TWICE. The count used to be Math.round(f * 10) and
+  // the percentage Math.round(f * 100), which are two different roundings of
+  // the same fraction: the count stepped at 5%, 15%, 25% … so "05 / 10" came
+  // up beside "45%" and the two halves of the same line disagreed for the
+  // whole run. The percentage is the number now, and the count is its tens
+  // digit, so they cannot drift — 05 / 10 appears exactly when the percentage
+  // reads 50. Floor, not round, for the same reason: 100% and 10 / 10 should
+  // mean finished rather than nearly.
   function setProgress(fraction){
     const f = Math.max(0, Math.min(1, fraction));
-    const step = Math.round(f * LOAD_STEPS);
+    const pct = Math.floor(f * 100 + 1e-9);
     loadFill.style.width = (f * 100).toFixed(1) + '%';
-    loadN.textContent = pad(step);
-    loadT.textContent = pad(LOAD_STEPS);
-    loadPct.textContent = Math.round(f * 100) + '%';
+    loadN.textContent = pad(Math.floor(pct / (100 / LOAD_STEPS)));
+    loadPct.textContent = pct + '%';
   }
+  // The denominator never changes, so it is written once here rather than
+  // sixty times a second inside setProgress — and, more to the point, it is
+  // written NOW. setProgress only runs after the catalogue fetch comes back,
+  // and the markup ships "00 / 00", so until the network answered the screen
+  // said "Loading 00 / 00" and the 10 the visitor is counting towards was
+  // nowhere on it.
+  loadT.textContent = pad(LOAD_STEPS);
 
   // Resolves once BOTH are true: every image is in the cache, and the minimum
   // time has passed. The bar tracks whichever of the two is further behind, so
@@ -2202,7 +2615,13 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
         const elapsed = Date.now() - started;
         const byTime = Math.min(1, elapsed / MIN_LOAD_MS);
         const byImages = total ? loaded / total : 1;
-        setProgress(Math.min(byTime, byImages));
+        // byImages is exactly 0 until the FIRST photograph lands, so a plain
+        // min() pinned the count at 00 / 10 and 0% for however long that took
+        // — the one stretch where a visitor most wants to see something move.
+        // The floor is a third of the elapsed time, which still cannot race
+        // ahead of byTime and still cannot reach the end on its own: finish()
+        // below waits for every image regardless of what the bar is showing.
+        setProgress(Math.min(byTime, Math.max(byImages, byTime * 0.34)));
         if ((byImages >= 1 && fontDone && elapsed >= MIN_LOAD_MS) || elapsed >= MAX_LOAD_MS) { finish(); return; }
         tickRaf = requestAnimationFrame(tick);
       };
@@ -2214,13 +2633,44 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
   // jump cut: the count never gets to BE ten out of ten for long enough to
   // read, and the work the screen was covering looks like it never happened.
   // So the finished screen is held, and only then does the curtain move.
+  //
+  // Unless there is a door behind it, in which case the door IS the beat, and
+  // holding first would only be making the visitor wait to be allowed to wait.
   const REVEAL_HOLD_MS = 1500;
+  // .g-enter's own transition, in milliseconds. The door is opaque after this.
+  const ENTER_FADE_MS = 600;
 
   function finishLoading(){
+    const gated = enterOn && enterEl && enterBtn;
     // Paint the grid underneath BEFORE the curtain starts to move, so the
     // fade reveals a finished page rather than one still assembling.
     requestAnimationFrame(() => {
       setTimeout(() => {
+        // ── WITH A DOOR, THE GALLERY IS NEVER SHOWN BEHIND IT ──
+        //
+        // This used to run one way for both cases: the loading screen faded
+        // out over 900ms and the gate went up at the end of it. But that fade
+        // was the screen clearing off a gallery with nothing in front of it,
+        // so the page was revealed for most of a second and then covered
+        // again by the door — a flash of the room before being asked to knock.
+        //
+        // So the door goes up FIRST, over a loading screen that is still
+        // fully lit, and the screen is only taken down once the door is
+        // opaque. Not a crossfade between the two, deliberately: through two
+        // half-faded covers the page shows faintly through both, which is the
+        // same flash quieter. One cover is always at full strength, and the
+        // swap underneath is invisible because something opaque is on top of
+        // it.
+        if (gated) {
+          showEnter();
+          setTimeout(() => {
+            loader.classList.add('done');
+            loader.setAttribute('aria-hidden', 'true');
+            // No fade to wait out — nobody can see this happen.
+            loader.style.display = 'none';
+          }, ENTER_FADE_MS);
+          return;
+        }
         loader.classList.add('done');
         loader.setAttribute('aria-hidden', 'true');
         setTimeout(() => {
@@ -2230,7 +2680,7 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
           // the page is still behind a veil.
           announceReveal();
         }, 900);
-      }, REVEAL_HOLD_MS);
+      }, gated ? 150 : REVEAL_HOLD_MS);
     });
   }
 
@@ -2358,6 +2808,12 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
     const owner = img.owner;
     if (owner && owner.name) {
       lbByName.textContent = owner.name;
+      // One element, many photographs: the inline style the last name left
+      // behind has to go before the next one is painted, or a person with no
+      // style of their own inherits the previous person's.
+      ['background-image', 'background-size', 'animation', 'text-shadow',
+        '-webkit-text-fill-color', 'color'].forEach((p) => lbByName.style.removeProperty(p));
+      applyNameStyle(lbByName, owner.nameStyle);
       lbBy.hidden = false;
     } else {
       lbBy.hidden = true;
@@ -2390,8 +2846,9 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
   // comment someone is halfway through typing.
   function closeLightbox(){
     // Full screen sits above this one, so it would otherwise be left floating
-    // over a page with nothing behind it.
-    closeFull();
+    // over a page with nothing behind it. Cut, do not shrink: the thing it
+    // would shrink towards is going at the same moment.
+    closeFull(true);
     lbScrim.classList.remove('open');
     lbScrim.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('overlay-lock');
@@ -2422,22 +2879,40 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
     lbFull.setAttribute('aria-hidden', 'false');
     lbFullClose.focus();
   };
-  const closeFull = () => {
+  // `instant` is for the case where the whole expanded view is going too:
+  // there is nothing left to shrink against, and a photograph fading out over
+  // a page the scrim has already left would read as a ghost.
+  // Reduced motion silences the shrink in CSS, but CSS cannot reach a
+  // setTimeout — so without this branch the visitor who asked for less motion
+  // got the longest close of anyone: a motionless overlay held for the length
+  // of an animation that was never going to play.
+  const lbReduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const closeFull = (instant) => {
     if (!lbFull || !lbFull.classList.contains('open')) return;
-    // Run the grow backwards rather than cutting. The src is only dropped once
-    // the animation is done, so the picture is still there to shrink.
+    clearTimeout(fullTimer);
+    if (instant || lbReduce.matches) {
+      lbFull.classList.remove('open', 'closing');
+      lbFull.setAttribute('aria-hidden', 'true');
+      lbFullImg.removeAttribute('src');
+      return;
+    }
+    // A short shrink, and the src is only dropped once it is done, so the
+    // picture is still there to shrink. 130 rather than 210: the animation it
+    // waits on is 120ms, and every millisecond past that is a press the
+    // visitor makes and does not get back.
     lbFull.classList.add('closing');
     lbFull.setAttribute('aria-hidden', 'true');
-    clearTimeout(fullTimer);
     fullTimer = setTimeout(() => {
       lbFull.classList.remove('open', 'closing');
       lbFullImg.removeAttribute('src');
-    }, 210);
+    }, 130);
     if (lbExpand && typeof lbExpand.focus === 'function') { try { lbExpand.focus(); } catch (e) {} }
   };
 
   if (lbExpand) lbExpand.addEventListener('click', openFull);
-  if (lbFullClose) lbFullClose.addEventListener('click', closeFull);
+  // Wrapped, not passed straight in: closeFull's first argument is the
+  // "cut it, do not shrink it" flag, and a click event is very truthy.
+  if (lbFullClose) lbFullClose.addEventListener('click', () => closeFull());
   // Anywhere on the backdrop closes it. Unlike the expanded view there is
   // nothing here to lose — no half-typed comment, just a picture.
   if (lbFull) lbFull.addEventListener('click', (e) => { if (e.target !== lbFullClose) closeFull(); });
@@ -2544,12 +3019,30 @@ const SITE_HOST = location.hostname.replace(/^www\./, '');
   // ── the photos are not yours to take ──
   // Casual-only, and honestly so: the browser has to receive the bytes to show
   // them, so anyone determined still can. This stops the reflex — right-click,
-  // save image — and nothing more.
-  document.addEventListener('contextmenu', (e) => {
-    if (e.target && e.target.tagName === 'IMG' && e.target.closest('.g-shot, .lb-frame')) e.preventDefault();
-  });
+  // save image; F12, read the page — and nothing more. The same block runs on
+  // index.html; change one, change both.
+  //
+  // The context menu goes page-wide rather than image-only. It used to test
+  // for an IMG inside .g-shot or .lb-frame, which left out the two biggest
+  // targets on the page: the full-screen photograph, which is the largest
+  // image here, and the player's cover art. Fields keep their own menu, or
+  // right-click paste into the comment box would stop working.
+  const isField = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+  document.addEventListener('contextmenu', (e) => { if (!isField(e.target)) e.preventDefault(); });
   document.addEventListener('dragstart', (e) => {
-    if (e.target && e.target.tagName === 'IMG' && e.target.closest('.g-shot, .lb-frame')) e.preventDefault();
+    if (e.target && e.target.tagName === 'IMG' &&
+        e.target.closest('.g-shot, .lb-frame, .lb-full, .g-player-art')) e.preventDefault();
+  });
+  // e.code, not e.key. On a Mac the inspector is Cmd+Option+I, and Option+i
+  // is a dead key on a US layout — e.key arrives as a circumflex, not an "i",
+  // so a handler written against e.key misses macOS entirely. e.code is the
+  // physical key and does not care about the layout or the modifiers.
+  document.addEventListener('keydown', (e) => {
+    const code = e.code || '';
+    const ctrl = e.ctrlKey || e.metaKey;
+    const inspect = ctrl && (e.shiftKey || e.altKey) && (code === 'KeyI' || code === 'KeyJ' || code === 'KeyC');
+    const source  = ctrl && !e.shiftKey && !e.altKey && (code === 'KeyU' || code === 'KeyS');
+    if (code === 'F12' || inspect || source) e.preventDefault();
   });
 
   // ── boot ──

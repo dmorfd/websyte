@@ -59,8 +59,8 @@ This copy keeps the following.
 | 26 | `loader-sfx.mp3` | **Copy in** unchanged. The cinematic loader's ambient loop (see §4) |
 | 27 | `gallery.html` | The shared gallery's page (from arandomperson.dev), at `/gallery` and `/gallery.html`. See "Shared gallery" in §6 |
 | 28 | `netlify/functions/gallery-proxy.js` | Admin → Gallery's calls to the shared gallery, with `GALLERY_KEY` attached on the server |
-| 29 | `netlify/functions/gallery-notify.js` | Admin → Gallery → Comment notifications: save / test this site's Discord webhook |
-| 30 | `netlify/functions/gallery-comment-notify.js` | Scheduled every minute (`netlify.toml`): posts new comments on this site's photos to that webhook |
+| 29 | `netlify/functions/gallery-notify.js` | Admin → Gallery → Comment notifications: hands his Discord webhook to the shared gallery; save / test |
+| 30 | `netlify/functions/gallery-comment-notify.js` | Scheduled every minute (`netlify.toml`): fallback poster, only while the shared gallery can't hold the webhook |
 | 31 | `netlify/functions/gallery-comment-check.js` | Same check, run at once when a visitor comments on this site's `/gallery` (same-site only, rate-limited) |
 | 32 | `netlify/functions/lib/gallery-notify.js` | Shared by the three above |
 | 33 | `SETUP.md` | This file |
@@ -264,13 +264,19 @@ runs the Discord bot. This site is a client of it.
   shared setting**: publishing it changes `/gallery` on arandomperson.dev too,
   and their changes show up here — last write wins.
 - **Comment notifications: Admin → Gallery → Comment notifications.** Paste a
-  Discord webhook URL there (Save, then Send test). Comments written on this
-  site's `/gallery` arrive at once (the page asks `gallery-comment-check` to
-  look straight away); comments written on arandomperson.dev arrive within a
-  minute, from the scheduled `gallery-comment-notify`. Both only post new
-  comments on **this site's** photos. The webhook is stored on this site only (masked
-  in the panel) and never sent to arandomperson.dev. Leave his webhook blank in
-  arandomperson.dev's Gallery Owners panel, or he'd get each comment twice.
+  Discord webhook URL there (Save, then Send test). It is handed to the shared
+  gallery as **his own** webhook (its `my-webhook` setting, through
+  `gallery-proxy`'s key — the URL is never shown back, only masked), and the
+  gallery posts each comment on **his** photos the moment it's written, on
+  either site. If arandomperson.dev is ever on a version without that setting,
+  this site falls back to posting them itself (`gallery-comment-check` at once,
+  the scheduled `gallery-comment-notify` within a minute) and moves the
+  webhook over by itself the next time the panel opens.
+- **The bell** (top right of the panel) lists new comments on his photos, from
+  the gallery's `comment-feed` (via `gallery-proxy`), with its own read cursor.
+- **Admin → Gallery Editor → Enter screen**: the door after the gallery's
+  loading screen (shared, like the rest of the editor). Its click is what lets
+  the sound player start on phones.
 - **UI Editor → Sidebar** colours this site's navigation drawer (the ☰ on the home page and on `/gallery`) only (panel,
   accent, transparency; blank colours follow the site accent and background).
 - Setup on Netlify: `GALLERY_API`, `GALLERY_KEY` (Functions scope),
