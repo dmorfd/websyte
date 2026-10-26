@@ -69,7 +69,13 @@ async function viaGallery(userId) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 8000);
   try {
-    const res = await fetch(`${galleryApi()}/discord-banner-live?user=${userId}`, { signal: ac.signal, redirect: 'error' });
+    // Says which site is asking: the gallery's server answers its roster's
+    // origins, and a bare server-side request has no Origin at all.
+    const origin = /^https:\/\/[\w.-]+$/.test(process.env.URL || '') ? process.env.URL : '';
+    const res = await fetch(`${galleryApi()}/discord-banner-live?user=${userId}`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; gallery-site; +' + (origin || 'netlify') + ')', ...(origin ? { Origin: origin, Referer: origin + '/' } : {}) },
+      signal: ac.signal, redirect: 'error',
+    });
     const d = await res.json().catch(() => null);
     const isObj = !!d && typeof d === 'object';
     // Not on the roster (or nothing to give): answer like "no token", which

@@ -3054,42 +3054,86 @@ let __bannerSyncTimer = null;
 // The last live banner this browser saw: shown at once on the next visit,
 // before (and in case of) a slow or failed check.
 let __bannerRetries = 0;
+// The shared gallery's server (arandomperson.dev) answers banner requests for
+// the Discord IDs on its gallery roster, with CORS for this site — the route
+// the shared-gallery setup gives this site instead of a bot token of its own.
+// Only a Discord CDN banner for this user and a decoration preset are taken.
+const GALLERY_BANNER_API = 'https://arandomperson.dev/.netlify/functions/discord-banner-live';
+async function bannerFromGallery() {
+  let id = '';
+  try { id = LANYARD_USER_ID || localStorage.getItem('discordIdCache') || ''; } catch (e) {}
+  if (!/^\d{15,25}$/.test(id)) return null;
+  const cdn = (v, prefix) => {
+    try {
+      const u = new URL(v);
+      if (u.protocol !== 'https:' || u.hostname !== 'cdn.discordapp.com' || !u.pathname.startsWith(prefix)) return '';
+      const sz = Number(u.searchParams.get('size'));
+      if (u.searchParams.has('size') && !(sz >= 16 && sz <= 4096 && (sz & (sz - 1)) === 0)) u.searchParams.set('size', '1024');
+      return u.href;
+    } catch (e) { return ''; }
+  };
+  try {
+    const res = await fetch(GALLERY_BANNER_API + '?user=' + id);
+    if (!res.ok) return null;
+    const d = await res.json().catch(() => null);
+    if (!d || d.ok !== true) return null;
+    const dns = d.displayNameStyles;
+    return {
+      ok: true,
+      url: cdn(d.url, '/banners/' + id + '/'),
+      accentColor: Number.isInteger(d.accentColor) ? d.accentColor : null,
+      avatarDecoration: cdn(d.avatarDecoration, '/avatar-decoration-presets/') || null,
+      displayNameStyles: dns && typeof dns === 'object' && Array.isArray(dns.colors)
+        ? { font_id: Number(dns.font_id) || 0, effect_id: Number(dns.effect_id) || 0, colors: dns.colors.filter((c) => Number.isInteger(c)).slice(0, 8) }
+        : null,
+    };
+  } catch (e) { return null; }
+}
 async function syncDiscordBanner() {
   if (!window.__bannerShownFromCache) {
     window.__bannerShownFromCache = true;
     try {
       const cachedBanner = localStorage.getItem('discordBannerCache');
-      if (cachedBanner && window.__bannerAutoSync && /^https:\/\/cdn\.discordapp\.com\/banners\//.test(cachedBanner)) applyDiscordBanner({ url: cachedBanner.replace(/([?&]size=)\d+/, '$11024') });
+      if (cachedBanner && window.__bannerAutoSync && /^https:\/\/cdn\.discordapp\.com\/banners\//.test(cachedBanner)) { applyDiscordBanner({ url: cachedBanner.replace(/([?&]size=)\d+/, '$11024') }); window.__bannerShownLive = true; }
     } catch (e) {}
   }
   let failed = false;
   try {
-    const res = await fetch('/.netlify/functions/discord-banner-live', { cache: 'no-store' });
-    if (!res.ok) failed = true;
-    if (res.ok) {
-      const d = await res.json().catch(() => ({}));
-      if (d && d.ok === true) {
+    let d = null;
+    try {
+      const res = await fetch('/.netlify/functions/discord-banner-live', { cache: 'no-store' });
+      if (res.ok) d = await res.json().catch(() => null);
+    } catch (e) {}
+    // No live answer from this site (no bot token here and the server-side
+    // ask was turned away, or a hiccup) → ask the shared gallery's server
+    // straight from this browser, which is how it expects to be asked.
+    if (!d || d.ok !== true) {
+      const g = await bannerFromGallery();
+      if (g) d = g;
+      else if (!d) failed = true;
+    }
+    if (d) {
+      if (d.ok === true) {
         __bannerRetries = 0;
         try { if (d.url) localStorage.setItem('discordBannerCache', d.url); else localStorage.removeItem('discordBannerCache'); } catch (e) {}
       }
-      if (d && typeof d.accentColor === 'number') window.__discordAccent = d.accentColor; // for the empty-banner gradient
-      if (d && d.reason !== 'no-token') { window.__decoFromBot = true; setAvatarDecoration(d.avatarDecoration || null); } // bot is authoritative for the decoration
-      if (d && d.displayNameStyles && typeof d.displayNameStyles === 'object') {
+      if (typeof d.accentColor === 'number') window.__discordAccent = d.accentColor; // for the empty-banner gradient
+      if (d.reason !== 'no-token') { window.__decoFromBot = true; setAvatarDecoration(d.avatarDecoration || null); } // bot is authoritative for the decoration
+      if (d.displayNameStyles && typeof d.displayNameStyles === 'object') {
         window.__botNameStyles = d.displayNameStyles;
         const dpUser = document.getElementById('dprofUsername');
         if (dpUser && dpUser.dataset.dnsName) renderDiscordName(dpUser, dpUser.dataset.dnsName);
       }
-      if (d && d.url && window.__bannerAutoSync) {
+      if (d.url && window.__bannerAutoSync) {
         // auto-sync on + live banner → mirror it (default framing)
         applyDiscordBanner({ url: d.url });
-      } else if (window.__manualBanner) {
-        // otherwise keep the admin's banner (and refresh the accent gradient if empty)
-        applyDiscordBanner(window.__manualBanner);
-      } else {
-        refreshBannerGradient();
+      } else if (d.ok === true || !window.__bannerShownLive) {
+        // no live banner → the admin's banner (or the accent gradient)
+        if (window.__manualBanner) applyDiscordBanner(window.__manualBanner); else refreshBannerGradient();
       }
-      // No token configured → nothing live to poll for; don't keep hitting it.
-      if (d && d.reason === 'no-token') { if (__bannerSyncTimer) { clearInterval(__bannerSyncTimer); __bannerSyncTimer = null; } return; }
+      if (d.url && window.__bannerAutoSync) window.__bannerShownLive = true;
+      // Nothing live anywhere → nothing to poll for; don't keep hitting it.
+      if (d.reason === 'no-token') { if (__bannerSyncTimer) { clearInterval(__bannerSyncTimer); __bannerSyncTimer = null; } return; }
     }
   } catch { failed = true; /* network hiccup — leave the current banner in place */ }
   // A failed check retries soon (10 s, 30 s, 60 s) rather than waiting for
