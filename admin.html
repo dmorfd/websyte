@@ -4163,35 +4163,21 @@ function UIEditor({ data, reload }) {
 // What the live-banner check actually answers right now, in words — so a
 // missing banner says why (no token, no banner on the profile, Discord down…)
 // instead of just not appearing.
-function LiveBannerStatus({ autoSync, userId }) {
+function LiveBannerStatus({ autoSync }) {
   const [st, setSt] = useState(null);
   const check = useCallback(async () => {
     setSt({ kind: "", text: "checking…" });
     try {
       const res = await fetch("/.netlify/functions/discord-banner-live", { cache: "no-store" });
-      let d = await res.json().catch(() => ({}));
-      // The public page asks arandomperson.dev from the visitor's browser when
-      // this site's function has no answer — check the same way.
-      let direct = false;
-      if (d.ok !== true && /^\d{15,25}$/.test(userId || "")) {
-        try {
-          const g = await fetch("https://arandomperson.dev/.netlify/functions/discord-banner-live?user=" + userId).then((r) => (r.ok ? r.json() : null));
-          if (g && g.ok === true) {
-            const url = typeof g.url === "string" && /^https:\/\/cdn\.discordapp\.com\/banners\//.test(g.url) ? g.url.replace(/([?&]size=)(?!(16|32|64|128|256|512|1024|2048|4096)\b)\d+/, "$11024") : "";
-            d = { ok: true, url }; direct = true;
-          }
-        } catch (e) {}
-      }
+      const d = await res.json().catch(() => ({}));
       let text, kind = "err", img = "";
       if (d.ok === true && d.url) {
         // Load it the way a visitor's browser will.
         const loads = await new Promise((r) => { const i = new Image(); i.onload = () => r(true); i.onerror = () => r(false); i.src = d.url; setTimeout(() => r(false), 8000); });
-        if (loads) { kind = "ok"; text = "✓ live banner found" + (direct ? " (from arandomperson.dev, asked by the visitor's browser)" : "") + (d.stale ? " (Discord is slow right now — showing the last one that worked)" : ""); img = d.url; }
+        if (loads) { kind = "ok"; text = "✓ live banner found" + (d.stale ? " (Discord is slow right now — showing the last one that worked)" : ""); img = d.url; }
         else text = "✗ Discord gave a banner link, but the image won't load.";
       } else if (d.ok === true) text = "No banner on the Discord profile (banners need Nitro) — the site shows the banner below, or the colour.";
-      else if (d.reason === "no-token") text = d.detail === "not-rostered"
-        ? "✗ No bot token here, and arandomperson.dev doesn't have this Discord ID on its gallery roster."
-        : "✗ No live source: set DISCORD_BOT_TOKEN on Netlify (or GALLERY_API), then redeploy.";
+      else if (d.reason === "no-token") text = "✗ No bot token: set DISCORD_BOT_TOKEN (and SITE_OWNER_DISCORD_ID) on Netlify, then redeploy.";
       else if (d.reason === "bad-user-id") text = "✗ SITE_OWNER_DISCORD_ID / DISCORD_USER_ID isn't a numeric Discord ID.";
       else if (d.reason === "discord-error") text = "✗ Discord refused the bot (HTTP " + d.status + ")" + (d.status === 401 ? " — the bot token is wrong or was reset." : ".");
       else text = "✗ Couldn't reach Discord (" + (d.reason || ("HTTP " + res.status)) + ").";
@@ -4306,7 +4292,7 @@ function BannerCropper({ data, reload }) {
             </div>
             <div className={"switch " + (autoSync ? "on" : "")} onClick={toggleAuto} role="switch" aria-checked={autoSync}><div className="knob" /></div>
           </div>
-          <LiveBannerStatus autoSync={autoSync} userId={data && data.discordUserId} />
+          <LiveBannerStatus autoSync={autoSync} />
           <div className="ctl-row" style={{ flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 12, fontWeight: 500 }}>Empty-banner colour</div>

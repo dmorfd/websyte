@@ -89,10 +89,10 @@ redeploy.
 | Variable | Used by | Notes |
 |---|---|---|
 | `ADMIN_KEY` | `lib/admin-auth.js` (every admin endpoint goes through it) | The admin password. Make it long and random, e.g. `openssl rand -base64 32`. Surrounding whitespace is trimmed. If it's missing, admin endpoints answer 500 (they fail closed) |
-| `DISCORD_BOT_TOKEN` | `discord-banner-live.js`, `get-guild-preview.js` | Bot token only, no `Bot ` prefix. Without it the live banner comes from the shared gallery's server (when `GALLERY_API` is set and the ID is on its roster), otherwise from the admin's static banner; the guild preview uses the public widget, if the server has one enabled |
+| `DISCORD_BOT_TOKEN` | `discord-banner-live.js`, `get-guild-preview.js` | Bot token only, no `Bot ` prefix. **Needed for the live banner** — Lanyard doesn't expose banners, only an authenticated Discord call does. Without it the site shows the admin's static banner (or the accent colour); the guild preview uses the public widget, if the server has one enabled |
 | `SITE_OWNER_DISCORD_ID` | `get-content.js` (both pages and the gallery), `discord-banner-live.js`, `get-guild-preview.js` | The friend's numeric user ID. **This one value decides whose Discord profile the site shows**: every page reads it from `get-content` and asks Lanyard for that user's avatar, name, Nitro name effect, guild tag, status and Spotify. The guild preview only looks up the server in this user's guild tag |
 | `DISCORD_USER_ID` | as above | The older name for the same ID. Used only when `SITE_OWNER_DISCORD_ID` isn't set, so an existing deploy keeps working |
-| `GALLERY_API` | `gallery-proxy.js`, `discord-banner-live.js` | `https://arandomperson.dev/.netlify/functions` — the shared gallery's server. Must be `https://` |
+| `GALLERY_API` | `gallery-proxy.js`, the gallery notification functions | `https://arandomperson.dev/.netlify/functions` — the shared gallery's server. Must be `https://` |
 | `GALLERY_KEY` | `gallery-proxy.js` | The `galk_…` key arandomperson.dev issued for this site. **Secret**: scope it to Functions, and never put it in a page. Only the proxy reads it, after checking `ADMIN_KEY` |
 | `DISCORD_WEBHOOK_URL` | `notify-visit.js` | Must be a `https://discord.com/api/webhooks/…` URL. If it's unset, visit pings are skipped silently. Pings include the visitor's **IP address**, so post them to a private channel only |
 | `TURNSTILE_SECRET_KEY` | `verify-turnstile.js`, `bot-filter.js` | Verifies Turnstile tokens, and also signs the HMAC gate-pass cookie. Rotating it signs every visitor out of the gate (they just solve it again) |
@@ -212,9 +212,9 @@ Only two things in `index.html` are still typed in by hand, both optional:
    `https://dmorfd.netlify.app` and the panel URL
    `https://dmorfd.netlify.app/admin.html#gallery`.
 3. Developer Portal → New Application → Bot → Reset Token → Netlify env
-   `DISCORD_BOT_TOKEN`. Optional once `GALLERY_API` is set: the live banner
-   then comes from the shared gallery. The guild preview still needs it
-   unless the server widget is enabled.
+   `DISCORD_BOT_TOKEN`. The live profile banner needs it (it's this site's
+   own bot; any application's bot can look a user up by ID). The guild
+   preview also uses it, unless the server widget is enabled.
    - The banner endpoint needs no server invite.
    - For the guild-tag preview, the bot must be **in the friend's tag
      server**. Otherwise it falls back to the server widget, if that's enabled.
