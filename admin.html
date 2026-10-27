@@ -112,6 +112,15 @@
   .crumb .here{color:var(--ink);font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .crumb-sep{display:none;}
   .top-actions{display:flex;align-items:center;gap:8px;margin-left:auto;position:relative;}
+  .bell-count{position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#e64a52;color:#fff;font:600 9.5px/16px 'JetBrains Mono',monospace;text-align:center;pointer-events:none;}
+  .bell-pop{position:absolute;top:42px;right:0;width:min(340px,calc(100vw - 24px));max-height:min(440px,70vh);overflow:auto;background:rgba(14,12,20,0.97);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,0.5);z-index:30;padding:6px;}
+  .bell-head{display:flex;align-items:center;justify-content:space-between;padding:6px 8px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);}
+  .bell-item{display:flex;gap:10px;align-items:flex-start;padding:8px;border-radius:8px;}
+  .bell-item.new{background:rgba(230,74,82,0.09);}
+  .bell-item img{width:38px;height:38px;border-radius:6px;object-fit:cover;flex:0 0 38px;background:rgba(255,255,255,0.05);}
+  .bell-item .who{font-size:12px;color:var(--ink);font-weight:600;}
+  .bell-item .when{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--ink-3);margin-left:6px;font-weight:400;}
+  .bell-item .msg{font-size:12px;color:var(--ink-2);margin-top:2px;word-break:break-word;}
   .icon-btn{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid var(--line-2);color:var(--ink-2);position:relative;}
   /* Show only on mobile widths (used by the audio toggle) */
   .mobile-only{display:none;}
@@ -613,6 +622,7 @@ const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 /* ═══════════════ ICONS ═══════════════ */
 const Ico = {
+  bell: (p) => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>,
   spark: (p) => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" {...p}><path d="M12 3v6M12 15v6M3 12h6M15 12h6M5.6 5.6l4.2 4.2M14.2 14.2l4.2 4.2M5.6 18.4l4.2-4.2M14.2 9.8l4.2-4.2" /></svg>,
   doc: (p) => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" {...p}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h6M9 9h2" /></svg>,
   ui: (p) => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" {...p}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" /></svg>,
@@ -1071,7 +1081,85 @@ function useDiscordAvatar() {
   return url;
 }
 
-function Topbar({ active, openSettings, settingsOpen, openMenu }) {
+// The bell: new comments on YOUR photos in the shared gallery. It reads the
+// gallery's comment-feed through this site's gallery-proxy (like every other
+// gallery call), which holds only this owner's photos and keeps its own read
+// cursor. Hidden when the gallery isn't connected or is too old to have it.
+function galleryAgo(t) {
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return "now";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  if (s < 86400) return Math.floor(s / 3600) + "h";
+  return Math.floor(s / 86400) + "d";
+}
+function GalleryBell({ onOpenGallery }) {
+  const [feed, setFeed] = useState(null);   // {items, unread, lastSeen}
+  const [open, setOpen] = useState(false);
+  const [seenAt, setSeenAt] = useState(0);  // the cursor as it was when opened
+  const boxRef = useRef(null);
+  const load = useCallback(async (markRead) => {
+    const r = await galleryCall(markRead ? { action: "comment-feed", markRead: true } : { action: "comment-feed" });
+    if (!r.ok) { if (r.status !== 429 && r.status < 500 || (r.data && r.data.reason === "not-configured")) setFeed(null); return; }
+    const d = r.data;
+    setFeed({
+      items: Array.isArray(d.gallery_comments) ? d.gallery_comments.slice(0, 30) : [],
+      unread: markRead ? 0 : Math.max(0, +d.galleryUnread || 0),
+      lastSeen: +d.lastSeen || 0,
+    });
+  }, []);
+  useEffect(() => {
+    load(false);
+    const t = setInterval(() => { if (!document.hidden) load(false); }, 60000);
+    return () => clearInterval(t);
+  }, [load]);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  if (!feed) return null;
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) { setSeenAt(feed.lastSeen); if (feed.unread) load(true); }
+  };
+  const photoOf = (x) => {
+    const p = x.photo;
+    const url = typeof p === "string" ? p : p && (p.thumb || p.url);
+    return typeof url === "string" && /^https:\/\//i.test(url) ? url : "";
+  };
+  return (
+    <div ref={boxRef} style={{ position: "relative" }}>
+      <button className={"icon-btn " + (open ? "active" : "")} onClick={toggle}
+        title="Gallery comments" aria-label={feed.unread ? feed.unread + " new gallery comments" : "Gallery comments"} aria-expanded={open}>
+        <Ico.bell />
+        {feed.unread ? <span className="bell-count">{feed.unread > 99 ? "99+" : feed.unread}</span> : null}
+      </button>
+      {open && (
+        <div className="bell-pop" role="dialog" aria-label="Gallery comments">
+          <div className="bell-head">
+            <span>Comments on your photos</span>
+            <button className="btn btn-tiny" onClick={() => { setOpen(false); onOpenGallery(); }}>Gallery →</button>
+          </div>
+          {!feed.items.length ? <div className="field-sub" style={{ padding: "4px 8px 10px" }}>No comments yet.</div> : feed.items.map((x) => (
+            <div key={x.imageId + ":" + x.id} className={"bell-item " + (x.t > seenAt ? "new" : "")}>
+              {photoOf(x) ? <img src={photoOf(x)} alt="" loading="lazy" /> : null}
+              <div style={{ minWidth: 0 }}>
+                <div className="who">{String(x.username || "someone")}<span className="when">{x.t ? galleryAgo(x.t) : ""}</span></div>
+                <div className="msg">{String(x.message || x.comment || "")}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Topbar({ active, openSettings, settingsOpen, openMenu, openGallery }) {
   const navAll = [{ id: "home", label: "Home" }, ...NAV];
   const hereIdx = navAll.findIndex((n) => n.id === active);
   const here = hereIdx >= 0 ? navAll[hereIdx].label : "Admin";
@@ -1160,6 +1248,7 @@ function Topbar({ active, openSettings, settingsOpen, openMenu }) {
         >
           {userMuted ? <Ico.volumeOff /> : <Ico.volumeOn />}
         </button>
+        <GalleryBell onOpenGallery={openGallery} />
         <button className={"icon-btn " + (settingsOpen ? "active" : "")} title="Settings" onClick={openSettings}><Ico.gear /></button>
       </div>
     </header>
@@ -2210,7 +2299,9 @@ function GalleryNotifyCard() {
       </div>
       <div className="ctl-stack" style={{ gap: 8 }}>
         <div className="field-sub">
-          A comment on one of <b>your</b> photos is posted to your Discord channel — at once when it was written on this site, within a minute when it was written on arandomperson.dev.
+          A comment on one of <b>your</b> photos is posted to your Discord channel{info && info.set && !info.shared
+            ? " — at once when it was written on this site, within a minute when it was written on arandomperson.dev."
+            : " the moment it's written, on either site. Only yours: comments on the other owner's photos go to theirs."}
           Discord → channel settings → Integrations → Webhooks → New Webhook → Copy URL.
         </div>
         {info && info.set ? <div style={{ fontSize: 12, color: "var(--ink-2)", fontFamily: "'JetBrains Mono', monospace", wordBreak: "break-all" }}>{info.masked}</div> : null}
@@ -2525,10 +2616,10 @@ const GAL_DEFAULT_CONFIG = {
   density: "comfortable", tileGlass: true, likes: true, overlay: "none",
   bg: { c1: "#1a0f12", c2: "#0b090a" },
   tileGlow: "",
-  music: { enabled: false, showCover: true, coverUrl: "", volume: 60, c1: "", c2: "", accentFrom: "", accentTo: "", fontUrl: "", fontName: "", titleColor: "", tint: "", glass: 20, tintStrength: 82, autoplay: true, tracks: [] },
+  music: { enabled: false, showCover: true, coverUrl: "", volume: 60, c1: "", c2: "", accentFrom: "", accentTo: "", fontUrl: "", fontName: "", titleColor: "", tint: "", glass: 20, tintStrength: 82, tracks: [] },
+  enter: { enabled: true, text: "enter", textScale: 100, gradColor1: "#3c0a1e", gradColor2: "#000000", gradAngle: 135, fontUrl: "", fontName: "" },
   video: { enabled: false, desktopUrl: "", mobileUrl: "", tint: "#000000", tintStrength: 45 },
   accents: { title: { c1: "#d7263d", c2: "#e3b04b" }, date: { c1: "#d7263d", c2: "#e3b04b" }, comment: { c1: "#d7263d", c2: "#e3b04b" }, section: { c1: "", c2: "" } },
-  sectionLine: 100,
   preset: null,
 };
 function galWithDefaults(def, v) {
@@ -2574,7 +2665,6 @@ function GalPair({ label, hint, c1, c2, onC1, onC2, locked }) {
     </div>
   );
 }
-
 
 function GalleryEditor() {
   const [cfg, setCfg] = useState(null);
@@ -2640,7 +2730,6 @@ function GalleryEditor() {
   const secLine = cfg.accents.section || { c1: "", c2: "" };
   const secLineC1 = secLine.c1 || "";
   const secLineC2 = secLine.c2 || "";
-  const secLineAmt = typeof cfg.sectionLine === "number" ? cfg.sectionLine : 100;
   // The exact gradient gallery.html builds — blank included, where it is not a
   // gradient between two chosen colours at all but the flat white hairline the
   // page has always drawn. Previewing a colour here that the page would not
@@ -2648,6 +2737,40 @@ function GalleryEditor() {
   const secLineImg = (secLineC1 || secLineC2)
     ? "linear-gradient(90deg, " + (secLineC1 || secLineC2) + ", " + (secLineC2 || secLineC1) + " 60%, transparent)"
     : "linear-gradient(90deg, rgba(255,255,255,.14), transparent)";
+  // ── THE ENTER SCREEN ──
+  // Read defensively, like the section rules above: a config cached from
+  // before this group existed would take the whole screen down on a property
+  // read of undefined, and the gallery editor is the one place that is
+  // guaranteed to meet an old config.
+  const enter = Object.assign(
+    {
+      enabled: true, text: "enter", textScale: 100,
+      // The main site's own defaults, so this card opens on the door site A
+      // draws rather than on a near-black one nobody chose.
+      gradColor1: "#3c0a1e", gradColor2: "#000000", gradAngle: 135,
+      fontUrl: "", fontName: "",
+    },
+    cfg.enter && typeof cfg.enter === "object" ? cfg.enter : {});
+  const enterC1 = isHex(enter.gradColor1) ? enter.gradColor1 : "#3c0a1e";
+  const enterC2 = isHex(enter.gradColor2) ? enter.gradColor2 : "#000000";
+  // THE PAGE'S RECIPE, CHARACTER FOR CHARACTER: the alphas ride along as hex
+  // suffixes, b3 being .702 and f2 being .949, exactly as gallery.html and the
+  // main site's own #enterScreen write them. Converted to rgba(…, .7) it would
+  // be a picture of a slightly different screen, and "near enough" between two
+  // copies of one door is how they drift apart.
+  const enterGrad = "linear-gradient(" + enter.gradAngle + "deg," + enterC1 + "b3," + enterC2 + "f2)";
+  // A video only actually plays when it is switched on AND has a URL, which is
+  // the same test gallery.html makes — switched on with nothing to play is not
+  // a video, and should not take the gradient's controls away.
+  const videoOn = !!(cfg.video && cfg.video.enabled && (cfg.video.desktopUrl || cfg.video.mobileUrl));
+  // The gate wears its OWN face — not the gallery heading's, which belongs to
+  // the page on the other side of the door. Blank is 'Noto Serif JP', which is
+  // what the main site's gate is pinned to. The " Ent" suffix matches the
+  // family gallery.html declares for this slot, so the preview below and the
+  // page ask for the same name.
+  const enterFace = enter.fontName
+    ? "'" + enter.fontName + " Ent', 'Noto Serif JP', serif"
+    : "'Noto Serif JP', serif";
   // ── THE PLAYER'S GLASS ──
   // The same three lines as gallery.html and gallery-config.js, for the same
   // reason: a preview that works the number out differently from the page is
@@ -2895,10 +3018,23 @@ function GalleryEditor() {
         <div className="glass">
           <div className="grp-head"><span className="grp-title">Background</span></div>
           <div className="ctl-stack">
-            <GalPair label="Gradient" hint="top and bottom" locked={locked}
+            {/* A video covers the gradient completely — it is fixed to the
+                viewport at object-fit:cover and sits a layer above it — so
+                with one playing these two swatches are a colour nobody is
+                going to see. */}
+            <GalPair label="Gradient"
+              hint={videoOn ? "the video is covering it" : "top and bottom"}
+              locked={locked || videoOn}
               c1={cfg.bg.c1} c2={cfg.bg.c2}
               onC1={(v) => up({ bg: Object.assign({}, cfg.bg, { c1: v }) })}
               onC2={(v) => up({ bg: Object.assign({}, cfg.bg, { c2: v }) })} />
+            {videoOn && (
+              <div className="field-sub" style={{ marginTop: -6 }}>
+                Turn the video off, or clear its URL, to set these again. They are still what a
+                visitor sees in the half-second before the video starts, and on a phone that refuses
+                to play it at all — so they are not wasted, just not adjustable while it is on.
+              </div>
+            )}
             <div>
               <div className="lbl">Glow under a photo <span className="field-sub">when you hover one</span></div>
               <div className="color-row">
@@ -2959,6 +3095,122 @@ function GalleryEditor() {
           </div>
         </div>
 
+        {/* ── THE ENTER SCREEN ──
+            Its own card, before the player, because that is the order the
+            visitor meets them in: the door, then the room with the music in
+            it. Read defensively — a config cached from before this group
+            existed would otherwise take the whole screen down on a property
+            read of undefined, the same trap the section rules carry a note
+            about. */}
+        <div className="glass">
+          <div className="grp-head" style={{ justifyContent: "space-between" }}>
+            <span className="grp-title">Enter screen</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, color: "rgba(253,245,236,0.6)" }}>Enabled</span>
+              <div className={"switch " + (enter.enabled ? "on" : "")} role="switch" aria-checked={enter.enabled}
+                onClick={() => upIn("enter", { enabled: !enter.enabled })}><div className="knob" /></div>
+            </div>
+          </div>
+          <div className="field-sub" style={{ marginBottom: 14 }}>
+            Comes up when the loading screen finishes counting, and waits to be clicked. That click
+            is what lets the sound player start — a phone will not play anything without one, so
+            this is the difference between music that plays and music that asks and is refused.
+            Off, the gallery opens straight away and the player has to take its chances.
+          </div>
+          <div className="ctl-stack" style={{ opacity: enter.enabled ? 1 : 0.45, pointerEvents: enter.enabled ? "auto" : "none" }}>
+            <div>
+              <div className="lbl-row">
+                <span className="lbl" style={{ margin: 0 }}>Enter text</span>
+                <span className="lbl-count">{(enter.text || "").length} / 100</span>
+              </div>
+              <input className="input" value={enter.text} maxLength={100} placeholder="enter"
+                onChange={(e) => upIn("enter", { text: e.target.value })} />
+              <div className="field-sub">Left empty it says <b>enter</b>.</div>
+            </div>
+            {/* The door's own typeface. Its own setting rather than a share of
+                the gallery heading's: the heading belongs to the page behind
+                the door, and a display face picked for a page seen once at the
+                top is rarely the face wanted for one word in the middle of a
+                black screen. Blank is Noto Serif JP — the face the main site's
+                gate is pinned to — so leaving it alone draws that door. */}
+            <div>
+              <div className="lbl">Enter text font <span className="field-sub">a file you host</span></div>
+              <FontPicker
+                url={enter.fontUrl || ""}
+                family={enter.fontName ? enter.fontName + " Ent" : ""}
+                onChange={({ url, name }) => upIn("enter", { fontUrl: url, fontName: name })}
+                hint="Upload the file to R2 and paste its public URL. Used only for the word on the door — leave it blank and the gate keeps Noto Serif JP, the same face the main site's enter screen uses."
+              />
+            </div>
+            <div className="ctl-row">
+              <span>Gradient colours</span>
+              <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
+                <input type="color" className="swatch" style={{ width: 26, height: 26 }} value={enterC1}
+                  onChange={(e) => upIn("enter", { gradColor1: e.target.value })} />
+                <input type="color" className="swatch" style={{ width: 26, height: 26 }} value={enterC2}
+                  onChange={(e) => upIn("enter", { gradColor2: e.target.value })} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input className="input" value={enter.gradColor1} maxLength={7}
+                style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}
+                onChange={(e) => upIn("enter", { gradColor1: e.target.value })} />
+              <input className="input" value={enter.gradColor2} maxLength={7}
+                style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}
+                onChange={(e) => upIn("enter", { gradColor2: e.target.value })} />
+            </div>
+            <div>
+              <div className="sld-head"><span>Gradient angle</span><span className="sld-val">{enter.gradAngle}°</span></div>
+              <input className="slider" type="range" min="0" max="360" step="5" value={enter.gradAngle}
+                onChange={(e) => upIn("enter", { gradAngle: +e.target.value })} />
+            </div>
+            <div>
+              <div className="sld-head"><span>Text size</span><span className="sld-val">{enter.textScale}%</span></div>
+              <input className="slider" type="range" min="50" max="250" step="5" value={enter.textScale}
+                onChange={(e) => upIn("enter", { textScale: +e.target.value })} />
+            </div>
+            {/* The door, at a sixth of the height. The same gradient recipe the
+                page builds — the alphas included, or a preview of a wash that
+                is 70% on the page would be describing a different screen. */}
+            <div className="preview-box" style={{ padding: 0, overflow: "hidden" }}>
+              <div className="preview-tag" style={{ position: "absolute", zIndex: 2 }}>Live preview</div>
+              <div style={{
+                position: "relative", height: 132, background: "#000",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <div style={{ position: "absolute", inset: 0, background: enterGrad }} />
+                {/* The word, with the page's four brackets around IT rather
+                    than around the screen — two borders each, hung off a
+                    wrapper that shrinks to the label. The padding holding
+                    them off the letters is the page's own 1rem/2rem, scaled
+                    down with the box. */}
+                <div style={{ position: "relative", zIndex: 1, display: "inline-flex", maxWidth: "100%" }}>
+                  <span style={{
+                    fontFamily: enterFace,
+                    fontSize: 1.4 * 16 * (enter.textScale / 100),
+                    letterSpacing: ".18em", color: "rgba(255,235,235,.85)",
+                    textShadow: "0 0 20px rgba(255,200,210,.25)", textAlign: "center",
+                    padding: "10px 22px", maxWidth: "100%", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
+                  }}>{enter.text || "enter"}</span>
+                  {[
+                    ["tl", { top: 0, left: 0, borderTopWidth: 1, borderLeftWidth: 1 }],
+                    ["tr", { top: 0, right: 0, borderTopWidth: 1, borderRightWidth: 1 }],
+                    ["bl", { bottom: 0, left: 0, borderBottomWidth: 1, borderLeftWidth: 1 }],
+                    ["br", { bottom: 0, right: 0, borderBottomWidth: 1, borderRightWidth: 1 }],
+                  ].map(([k, pos]) => (
+                    <span key={k} style={Object.assign({
+                      position: "absolute", pointerEvents: "none",
+                      width: Math.round(1.4 * 16 * (enter.textScale / 100) * 0.72),
+                      height: Math.round(1.4 * 16 * (enter.textScale / 100) * 0.72),
+                      borderStyle: "solid", borderWidth: 0, borderColor: "rgba(255,235,235,.4)",
+                    }, pos)} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* ── MUSIC ── */}
         <div className="glass">
           <div className="grp-head" style={{ justifyContent: "space-between" }}>
@@ -2997,11 +3249,12 @@ function GalleryEditor() {
                     player wore before this existed. Setting either end fills
                     the other from what it was following, so you can't end up
                     with half a gradient and half an inherited one. */}
-                <div style={{ opacity: locked ? 0.45 : 1, pointerEvents: locked ? "none" : "auto" }}>
+                <div>
                   <div className="lbl">
                     Player colours
-                    <span className="field-sub"> {locked ? "the theme preset owns every colour"
-                      : (cfg.music.c1 || cfg.music.c2) ? "its own pair" : "follows the title accent"}</span>
+                    <span className="field-sub"> {(cfg.music.c1 || cfg.music.c2) ? "its own pair"
+                      : locked ? "follows the title accent, which the preset sets"
+                      : "follows the title accent"}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <input type="color" className="swatch" value={playerC1}
@@ -3034,7 +3287,14 @@ function GalleryEditor() {
                     as a control, and blank follows the pair above — which
                     itself follows the title accent. Three steps, each a
                     fallback rather than a copy. */}
-                <div style={{ opacity: locked ? 0.45 : 1, pointerEvents: locked ? "none" : "auto" }}>
+                {/* NOT locked by a theme preset, unlike the accents above.
+                    A preset genuinely does own those — resolveConfig writes
+                    the preset's pair straight over them. It does not touch
+                    `music`, so the player follows a preset only through the
+                    blank fallback, and a pair set here has always won on the
+                    page. Disabling the card did not change that; it just hid
+                    the control that could have fixed it. */}
+                <div>
                   <div className="lbl">
                     Top accent line
                     <span className="field-sub"> {(cfg.music.accentFrom || cfg.music.accentTo) ? "its own pair" : "follows the player colours"}</span>
@@ -3061,11 +3321,19 @@ function GalleryEditor() {
                     <button className="btn btn-tiny" style={{ marginTop: 8 }}
                       onClick={() => upIn("music", { accentFrom: "", accentTo: "" })}>clear</button>
                   ) : null}
+                  {/* The page's own numbers: 2px, and the colours holding
+                      from a fifth across to four fifths. A preview drawn to
+                      different numbers than the page is how a control comes
+                      to look as though it does nothing. */}
                   <div style={{
                     marginTop: 8, height: 2, borderRadius: 2,
                     background: "linear-gradient(90deg, transparent, " + (cfg.music.accentFrom || playerC1)
-                      + " 30%, " + (cfg.music.accentTo || playerC2) + " 70%, transparent)",
+                      + " 20%, " + (cfg.music.accentTo || playerC2) + " 80%, transparent)",
                   }} />
+                  <div className="field-sub" style={{ marginTop: 6 }}>
+                    It fades with the panel, so a player whose glass is turned right down has a
+                    faint line and one at <b>0</b> has none at all — no colour brings it back.
+                  </div>
                 </div>
 
                 {/* ── THE GLASS ── */}
@@ -3125,10 +3393,10 @@ function GalleryEditor() {
                         boxShadow: "0 14px 34px -16px rgba(0,0,0," + (0.62 * musicPanel).toFixed(3) + ")",
                       }}>
                         <div style={{
-                          position: "absolute", top: -1, left: 14, right: 14, height: 1,
+                          position: "absolute", top: -1, left: 14, right: 14, height: 2,
                           opacity: musicPanel,
                           background: "linear-gradient(90deg, transparent, " + (cfg.music.accentFrom || playerC1)
-                            + " 30%, " + (cfg.music.accentTo || playerC2) + " 70%, transparent)",
+                            + " 20%, " + (cfg.music.accentTo || playerC2) + " 80%, transparent)",
                         }} />
                         <div style={{
                           fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
@@ -3139,20 +3407,16 @@ function GalleryEditor() {
                   </div>
                 </div>
 
-                {/* ── AUTOPLAY ── */}
-                <div className="ctl-row">
-                  <span>Start on arrival <span className="field-sub">
-                    {cfg.music.autoplay === false ? "waits for play" : "if the browser allows it"}</span></span>
-                  <div className={"switch " + (cfg.music.autoplay !== false ? "on" : "")} role="switch"
-                    aria-checked={cfg.music.autoplay !== false}
-                    onClick={() => upIn("music", { autoplay: cfg.music.autoplay === false })}><div className="knob" /></div>
-                </div>
+                {/* The "Start on arrival" switch used to be here. The enter
+                    screen replaced it — a gate the visitor clicks is the
+                    gesture a phone was always going to insist on, so there is
+                    no longer a question to put to the owner. */}
                 <div className="field-sub" style={{ marginTop: -4 }}>
-                  It waits for the loading screen to finish first — nothing plays while the gallery
-                  is still counting to ten behind a black curtain. Then: browsers refuse sound that
-                  nobody asked for, and phones refuse it always, so the page tries once, tries once
-                  more on the visitor’s first tap or key, and then stops asking. It never fights
-                  someone who has pressed pause.
+                  The music starts when the visitor comes through the <b>enter screen</b>, which is
+                  what lets it play at all on a phone — sound needs a press, and that is the press.
+                  With the enter screen switched off the page tries on its own, tries once more on
+                  the first tap or key, and then stops asking. It never fights someone who has
+                  pressed pause.
                 </div>
 
                 {/* ── THE SONG TITLE'S FACE ── */}
@@ -3287,12 +3551,12 @@ function GalleryEditor() {
 
             {/* ── THE SECTION RULES ──
                 The hairline that runs out beside every game's name down the
-                page. Not a GalPair like the three above, for two reasons: it
-                has a strength of its own, and blank here is MEANINGFUL —
-                it is the plain white rule the gallery has always drawn, which
-                is not a colour you could pick from a swatch. So: placeholders
-                that say what blank does, a clear button to get back to it, and
-                a slider that goes all the way to nothing. */}
+                page. Not a GalPair like the three above, because blank here is
+                MEANINGFUL — it is the plain white rule the gallery has always
+                drawn, which is not a colour you could pick from a swatch. So:
+                placeholders that say what blank does, and a clear button to
+                get back to it. There was a strength slider as well; it is
+                gone. Two controls for one decision. */}
             <div style={{ opacity: locked ? 0.45 : 1, pointerEvents: locked ? "none" : "auto" }}>
               <div className="lbl">
                 Section rules
@@ -3316,29 +3580,20 @@ function GalleryEditor() {
                 <button className="btn btn-tiny" style={{ marginTop: 8 }}
                   onClick={() => upAcc("section", { c1: "", c2: "" })}>clear</button>
               ) : null}
-              <div style={{ marginTop: 10 }}>
-                <div className="sld-head">
-                  <span>How strong</span>
-                  <span className="sld-val">{secLineAmt ? secLineAmt + "%" : "no rule"}</span>
-                </div>
-                <input className="slider" type="range" min="0" max="100" step="1" value={secLineAmt}
-                  onChange={(e) => up({ sectionLine: +e.target.value })} />
-              </div>
-              {/* The row as the page draws it: number, name, rule, count. The
-                  rule is the only part that is being set here, and it is the
-                  one part you cannot judge on its own — it has to be seen
-                  against the things it runs between. */}
+              {/* The header as the page draws it: number and name on a row
+                  with the rule running out beside them, and the count on its
+                  own line underneath. The rule is the only part being set
+                  here, and it is the one part you cannot judge on its own —
+                  it has to be seen against the things it runs between. */}
               <div className="preview-box" style={{ textAlign: "left", marginTop: 10 }}>
                 <div className="preview-tag">Live preview</div>
-                <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginTop: 14 }}>
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--ink-3)", paddingBottom: 5 }}>02</span>
-                  <span style={{ fontSize: 19, fontWeight: 600, lineHeight: 1.1 }}>VR Chat</span>
-                  <span style={{
-                    flex: "1 1 60px", height: 1, marginBottom: 9,
-                    opacity: secLineAmt / 100,
-                    backgroundImage: secLineImg,
-                  }} />
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: ".16em", color: "var(--ink-3)", paddingBottom: 5 }}>04 SHOTS</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 14 }}>
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 14 }}>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--ink-3)", paddingBottom: 5 }}>02</span>
+                    <span style={{ fontSize: 19, fontWeight: 600, lineHeight: 1.1, color: "#fff" }}>VR Chat</span>
+                    <span style={{ flex: "1 1 60px", minWidth: 34, height: 1, marginBottom: 9, backgroundImage: secLineImg }} />
+                  </div>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: ".16em", color: "#fff" }}>04 SCREENSHOTS</span>
                 </div>
               </div>
             </div>
@@ -3922,9 +4177,7 @@ function LiveBannerStatus({ autoSync }) {
         if (loads) { kind = "ok"; text = "✓ live banner found" + (d.stale ? " (Discord is slow right now — showing the last one that worked)" : ""); img = d.url; }
         else text = "✗ Discord gave a banner link, but the image won't load.";
       } else if (d.ok === true) text = "No banner on the Discord profile (banners need Nitro) — the site shows the banner below, or the colour.";
-      else if (d.reason === "no-token") text = d.detail === "not-rostered"
-        ? "✗ No bot token here, and arandomperson.dev doesn't have this Discord ID on its gallery roster."
-        : "✗ No live source: set DISCORD_BOT_TOKEN on Netlify (or GALLERY_API), then redeploy.";
+      else if (d.reason === "no-token") text = "✗ No bot token: set DISCORD_BOT_TOKEN (and SITE_OWNER_DISCORD_ID) on Netlify, then redeploy.";
       else if (d.reason === "bad-user-id") text = "✗ SITE_OWNER_DISCORD_ID / DISCORD_USER_ID isn't a numeric Discord ID.";
       else if (d.reason === "discord-error") text = "✗ Discord refused the bot (HTTP " + d.status + ")" + (d.status === 401 ? " — the bot token is wrong or was reset." : ".");
       else text = "✗ Couldn't reach Discord (" + (d.reason || ("HTTP " + res.status)) + ").";
@@ -5518,6 +5771,7 @@ function App() {
             openSettings={() => setSettingsOpen(true)}
             settingsOpen={settingsOpen}
             openMenu={() => setSidebarOpen(!sidebarOpen)}
+            openGallery={() => navigate("gallery")}
           />
           <div className={"content " + (active === "home" ? "content-home" : "")}>
             {renderPage()}

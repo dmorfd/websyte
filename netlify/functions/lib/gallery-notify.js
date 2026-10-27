@@ -11,7 +11,10 @@ const store = () => getStore({
   token: process.env.NETLIFY_BLOBS_TOKEN,
   consistency: 'strong',
 });
-const SETTINGS = 'gallery-notify';        // {webhookUrl, enabled}
+// shared: true once the shared gallery holds the webhook too (its my-webhook
+// action) — it then posts every comment on this owner's photos itself, from
+// either site, and the check below stands down so nothing is posted twice.
+const SETTINGS = 'gallery-notify';        // {webhookUrl, enabled, shared}
 const SEEN = 'gallery-notify-seen';       // {ids:[imageId:commentId…], ready}
 
 // Discord webhooks only: this URL is posted to server-side, so anything else
@@ -25,6 +28,36 @@ function galleryApi() {
   try { u = new URL(raw); } catch { return ''; }
   const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
   return u.protocol === 'https:' || (local && u.protocol === 'http:') ? raw : '';
+}
+
+// Sets (or, with '', clears) this owner's comment webhook on the shared
+// gallery, through gallery-admin with this site's gallery key.
+//   → {ok:true} | {ok:false, unsupported:true} (an older gallery server) |
+//     {ok:false, error}
+async function setSharedWebhook(webhook) {
+  const api = galleryApi();
+  const key = String(process.env.GALLERY_KEY || '').trim();
+  if (!api || !key) return { ok: false, unsupported: true };
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 8000);
+  try {
+    const res = await fetch(api + '/gallery-admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key },
+      body: JSON.stringify({ action: 'my-webhook', webhook }),
+      signal: ac.signal,
+      redirect: 'error',
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.ok !== false) return { ok: true };
+    const msg = String(d.error || d.message || '');
+    if (res.status === 400 && /unknown action/i.test(msg)) return { ok: false, unsupported: true };
+    return { ok: false, error: msg || `The gallery answered HTTP ${res.status}.` };
+  } catch (err) {
+    return { ok: false, error: err && err.name === 'AbortError' ? 'The gallery took too long to answer.' : 'Could not reach the gallery.' };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function post(webhookUrl, payload) {
@@ -64,7 +97,7 @@ async function checkComments() {
   let s;
   try { s = store(); } catch { return; }
   const cfg = (await s.get(SETTINGS, { type: 'json' }).catch(() => null)) || {};
-  if (!isWebhook(cfg.webhookUrl) || cfg.enabled === false) return;
+  if (!isWebhook(cfg.webhookUrl) || cfg.enabled === false || cfg.shared === true) return;
   const api = galleryApi();
   const key = String(process.env.GALLERY_KEY || '').trim();
   if (!api || !key) return;
@@ -138,4 +171,4 @@ async function checkCommentsOnce() {
   finally { await s.setJSON(LOCK, { until: 0 }).catch(() => {}); }
 }
 
-module.exports = { store, SETTINGS, SEEN, isWebhook, galleryApi, post, checkCommentsOnce };
+module.exports = { store, SETTINGS, SEEN, isWebhook, galleryApi, post, setSharedWebhook, checkCommentsOnce };

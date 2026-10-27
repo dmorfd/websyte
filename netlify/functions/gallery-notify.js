@@ -1,15 +1,18 @@
 // POST /.netlify/functions/gallery-notify   (admin only)
 //
-// Admin → Gallery → Comment notifications. This site's own Discord webhook
-// for comments on its own photos in the shared gallery. Stored here, on this
-// site — never sent to the gallery's server. gallery-comment-notify.js (a
-// scheduled function) does the posting.
-//   {action:'get'}                       → {ok, set, masked, enabled}
+// Admin → Gallery → Comment notifications. This owner's Discord webhook for
+// comments on their own photos in the shared gallery.
+// It is handed to the shared gallery (its per-owner my-webhook setting), which
+// then posts each comment the moment it is written, on either site. A copy is
+// kept here for the panel's masked display and its test button. If the
+// gallery's server is too old to take it, this site posts instead —
+// gallery-comment-notify.js, every minute — exactly as before.
+//   {action:'get'}                       → {ok, set, masked, enabled, shared}
 //   {action:'save', webhookUrl, enabled} → webhookUrl '' removes it
 //   {action:'test'}                      → posts a test message
 // The full URL is never sent back to the browser, only a masked form.
 const { checkAdmin, authFailure } = require('./lib/admin-auth');
-const { store, SETTINGS, isWebhook, post } = require('./lib/gallery-notify');
+const { store, SETTINGS, SEEN, isWebhook, post, setSharedWebhook } = require('./lib/gallery-notify');
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -33,8 +36,29 @@ exports.handler = async (event) => {
     const cur = (await s.get(SETTINGS, { type: 'json' })) || {};
     const url = typeof cur.webhookUrl === 'string' ? cur.webhookUrl : '';
     const enabled = cur.enabled !== false;
+    const shared = cur.shared === true;
+    const reply = (n) => json(200, { ok: true, set: !!n.webhookUrl, masked: mask(n.webhookUrl), enabled: n.enabled !== false, shared: n.shared === true });
 
-    if (body.action === 'get') return json(200, { ok: true, set: !!url, masked: mask(url), enabled });
+    // Hand the gallery what it should hold now ('' when off), and record
+    // whether it took it. Leaving shared mode resets this site's own check,
+    // so it starts from now instead of posting a backlog.
+    const sync = async (next) => {
+      const r = await setSharedWebhook(next.enabled !== false && next.webhookUrl ? next.webhookUrl : '');
+      if (!r.ok && !r.unsupported) return r.error;
+      next.shared = r.ok;
+      if (shared && !next.shared) await s.delete(SEEN).catch(() => {});
+      await s.setJSON(SETTINGS, next);
+      return '';
+    };
+
+    if (body.action === 'get') {
+      // A webhook saved before the gallery could hold one moves over by itself.
+      if (url && enabled && !shared) {
+        const next = { webhookUrl: url, enabled };
+        if (!(await sync(next))) return reply(next);
+      }
+      return reply(cur);
+    }
 
     if (body.action === 'save') {
       const next = { webhookUrl: url, enabled };
@@ -47,8 +71,9 @@ exports.handler = async (event) => {
         if (typeof body.enabled !== 'boolean') return json(400, { ok: false, error: 'enabled must be true or false.' });
         next.enabled = body.enabled;
       }
-      await s.setJSON(SETTINGS, next);
-      return json(200, { ok: true, set: !!next.webhookUrl, masked: mask(next.webhookUrl), enabled: next.enabled });
+      const err = await sync(next);
+      if (err) return json(502, { ok: false, error: 'The shared gallery didn\'t take it: ' + err });
+      return reply(next);
     }
 
     if (body.action === 'test') {
